@@ -1,0 +1,14 @@
+Howler
+Copyright (c) 2024-present
+
+This product is based on Nightcall, originally developed by:
+  Lance Pendergrass <lance.pendergrass@walmart.com>
+  Copyright (c) 2017-present, Walmart Inc.
+  https://github.com/lpendergrass/nightcall
+
+The original work is licensed under the Apache License, Version 2.0.
+Substantial modifications have been made to the original codebase, including
+but not limited to: architectural redesign, new module system, async execution
+model, updated tooling, and extended functionality.
+
+A copy of the Apache License 2.0 is included in this repository as LICENSE.

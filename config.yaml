@@ -1,0 +1,59 @@
+concurrency:
+  concurrent_tasks: 4
+  task_timeout: 3600
+  discovery_wait: 60
+
+masscan:
+  rate: 2000
+  retries: 2
+  ports: "21,22,23,25,26,53,80,81,110-111,113,135,139,143,179,199,443,445,465,514-515,548,554,587,646,993,995,1025,1026,1027,1033,1035,1443,1720,1723,1884,1885,1886,1981,1982,1983,1987,1988,1989,1996,2000,2001,2002,2065,2067,2115,3306,3389,4000,4001,4002,5060,5061,5666,5900,6000,6001,6002,7767,7768,8000,8008,8080,8443,8888,9000,9001,9002,10000,21002,21010,32768,49152,49154,49338,51003,51004,54138,U:53,U:69,U:111,U:123,U:135,U:137,U:161,U:500,U:514,U:520,U:623,U:1033,U:1434,U:2049,U:4500,U:5353"
+
+nmap:
+  large_host_threshold: 100
+  version_intensity: 5
+  max_retries: 2
+  max_rtt_timeout: "300ms"
+  max_scan_delay: "300ms"
+  nse_tcp: "ajp-headers,amqp-info,banner,cassandra-info,dns-zone-transfer,ftp-anon,ftp-syst,http-apache-server-status,http-backup-finder,http-config-backup,http-devframework,http-method-tamper,http-methods,http-open-proxy,http-passwd,http-robots.txt,http-shellshock,http-sitemap-generator,http-title,http-vuln-cve2017-5638,http-vuln-cve2017-5689,http-webdav-scan,imap-capabilities,iscsi-info,jdwp-info,ldap-rootdse,ldap-search,mongodb-databases,mongodb-info,mqtt-subscribe,ms-sql-info,mysql-empty-password,mysql-info,nfs-showmount,pop3-capabilities,redis-info,rmi-vuln-classloader,rsync-list-modules,sip-methods,smb-enum-domains,smb-enum-shares,smb-enum-users,smb-os-discovery,smb-vuln-ms17-010,smtp-commands,ssl-heartbleed,ssl-known-key,supermicro-ipmi-conf,tls-ticketbleed,unusual-port,x11-access"
+  nse_udp: "banner,dns-nsid,dns-recursion,dns-service-discovery,ipmi-cipher-zero,ipmi-version,ms-sql-info,nbstat,nfs-showmount,ntp-info,sip-methods,smb-enum-domains,smb-enum-shares,smb-enum-users,smb-os-discovery,snmp-sysdescr,snmp-win32-shares,snmp-win32-software,snmp-win32-users,unusual-port,upnp-info"
+  udp_ports: "53,67-69,80,88,111,123,135,137-139,161,389,445,500,514,520,623,1033,1433,1434,1900,2049,4500,5060,5353,49152"
+  nse_args:
+    http_put_url: "/"
+    http_put_file: "/etc/timezone"
+    cmd: "whoami"
+    httpspider_maxpagecount: 100
+
+wordlists:
+  user_dict: /usr/share/ncrack/minimal.usr
+  pass_dict: /usr/share/seclists/Passwords/unix_passwords.txt
+  snmp_dict: /usr/share/seclists/Miscellaneous/default-snmp-strings.txt
+  http_fuzz_small: /usr/share/seclists/Discovery/Web-Content/common.txt
+  http_fuzz_large: /usr/share/seclists/Discovery/Web-Content/big.txt
+
+# Override auto-detected tool paths if needed (null = auto-detect via which)
+tools:
+  masscan: null
+  nmap: null
+  ffuf: null
+  gowitness: null
+  nikto: null
+  whatweb: null
+  wafw00f: null
+  wpscan: null
+  joomscan: null
+  "testssl.sh": null
+  "enum4linux-ng": null
+  hydra: null
+  "ssh-audit": null
+  "smtp-user-enum": null
+  dnsrecon: null
+  "ike-scan": null
+  showmount: null
+  msfconsole: null
+
+features:
+  randomize_jobs: false
+  jsonl_output: true
+
+output:
+  log_level: INFO
