@@ -58,10 +58,19 @@ Howler preserves the battle-tested pipeline from nightcall (masscan discovery â†
 
 ```
 Python 3.10+
+```
+
+**Kali / Debian / Ubuntu** â€” pip is blocked system-wide (PEP 668), use apt instead:
+```bash
+apt-get install python3-yaml python3-rich
+```
+
+**Other systems:**
+```bash
 pip install pyyaml rich
 ```
 
-Or use `--install-prereqs` to have Howler install them automatically.
+Or run `sudo python3 howler.py --install-prereqs` and Howler will pick the right method automatically.
 
 ### System Tools
 
@@ -90,11 +99,10 @@ Howler checks for each tool at startup and skips modules whose tools aren't foun
 
 **Kali Linux quick install:**
 ```bash
-apt-get install masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh -y
-pip install ssh-audit
+apt-get install python3-yaml python3-rich masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh -y
+pip install ssh-audit --break-system-packages
 go install github.com/sensepost/gowitness@latest
 go install github.com/ffuf/ffuf/v2@latest
-pip install pyyaml rich
 ```
 
 ---
