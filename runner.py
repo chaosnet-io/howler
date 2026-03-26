@@ -10,6 +10,7 @@ import asyncio
 import logging
 import random
 import time
+from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
@@ -113,6 +114,18 @@ class AsyncJobRunner:
                 log.debug(f"StdErr [{job.description}]: {stderr[:500]}")
 
             log.info(f"Completed ({duration:.1f}s rc={returncode}): {job.description!r}")
+
+            # Write stdout to output_file for tools that don't write their own file
+            # (e.g. whatweb, wafw00f). Tools like ffuf/nmap write their own file via
+            # -o/-oA flags, so we skip if the file already exists.
+            if job.output_file and stdout.strip():
+                out_path = Path(job.output_file)
+                if not out_path.exists():
+                    try:
+                        out_path.write_text(stdout, encoding="utf-8", errors="replace")
+                    except OSError as e:
+                        log.warning(f"Could not write output file {out_path}: {e}")
+
             return ScanResult(
                 job=job,
                 returncode=returncode,
