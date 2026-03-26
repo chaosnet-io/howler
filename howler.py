@@ -316,17 +316,48 @@ def root_check() -> None:
 
 
 def install_prereqs() -> None:
-    console.print("Attempting to install prerequisites (pyyaml, rich)...")
+    """
+    Install pyyaml and rich.
+    On Debian/Kali systems, pip install is blocked by PEP 668 (externally-managed-environment).
+    Try apt first, fall back to pip with --break-system-packages only if apt is unavailable.
+    """
     null = subprocess.DEVNULL
+
+    # Detect Debian/Ubuntu/Kali — use apt if available
+    apt = subprocess.run(["which", "apt-get"], capture_output=True).returncode == 0
+    if apt:
+        console.print("Detected apt — installing via apt-get...")
+        pkgs = ["python3-yaml", "python3-rich"]
+        result = subprocess.run(
+            ["apt-get", "install", "-yqq", *pkgs],
+            stdout=null, stderr=null,
+        )
+        if result.returncode == 0:
+            console.print("[green]Prerequisites installed via apt. Relaunch howler.[/green]")
+            sys.exit(0)
+        console.print("[yellow]apt-get failed, falling back to pip...[/yellow]")
+
+    # Non-Debian systems or apt failure — standard pip
+    result = subprocess.run(["pip3", "install", "pyyaml", "rich"], stdout=null, stderr=null)
+    if result.returncode == 0:
+        console.print("[green]Prerequisites installed via pip. Relaunch howler.[/green]")
+        sys.exit(0)
+
+    # PEP 668 managed environment — offer the override flag
     result = subprocess.run(
-        ["pip3", "install", "pyyaml", "rich"],
+        ["pip3", "install", "--break-system-packages", "pyyaml", "rich"],
         stdout=null, stderr=null,
     )
-    if result.returncode:
-        console.print("[red]pip install failed. Install manually: pip install pyyaml rich[/red]")
-        sys.exit(1)
-    console.print("[green]Prerequisites installed. Relaunch howler.[/green]")
-    sys.exit(0)
+    if result.returncode == 0:
+        console.print("[green]Prerequisites installed. Relaunch howler.[/green]")
+        sys.exit(0)
+
+    console.print(
+        "[red]Automatic install failed.[/red]\n"
+        "On Kali/Debian, run:  apt-get install python3-yaml python3-rich\n"
+        "Otherwise:            pip3 install pyyaml rich"
+    )
+    sys.exit(1)
 
 
 def init_logging(config: Config) -> None:
