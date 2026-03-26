@@ -72,6 +72,12 @@ pip install pyyaml rich
 
 Or run `sudo python3 howler.py --install-prereqs` and Howler will pick the right method automatically.
 
+**NixOS** — pip and apt don't work on NixOS. Use the provided `shell.nix`:
+```bash
+nix-shell        # drops you into a shell with everything available
+sudo python3 howler.py <target>
+```
+
 ### System Tools
 
 Howler checks for each tool at startup and skips modules whose tools aren't found. Only `masscan` and `nmap` are strictly required to run the core pipeline — everything else is optional.
