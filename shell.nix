@@ -1,4 +1,9 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import <nixpkgs> {
+    config.allowUnfreePredicate = pkg: builtins.elem (pkgs.lib.getName pkg) [
+      "wpscan"   # unfreeRedistributable — WordPress scanner
+    ];
+  }
+}:
 
 # Usage:
 #   nix-shell          — enter the dev environment
@@ -9,7 +14,6 @@
 #
 # Tools NOT in nixpkgs (skip or install separately):
 #   joomscan       — no nix package; grab from GitHub
-#   smtp-user-enum — no nix package; use python venv inside this shell
 
 let
   # Python with the two required library deps baked in.
@@ -33,7 +37,7 @@ in pkgs.mkShell {
     # ── HTTP ───────────────────────────────────────────────────────────
     nikto
     whatweb
-    python3Packages.wafw00f
+    wafw00f
     wpscan
     gowitness
     ffuf
@@ -51,11 +55,7 @@ in pkgs.mkShell {
     enum4linux-ng
 
     # ── SMTP ───────────────────────────────────────────────────────────
-    # smtp-user-enum is not in nixpkgs.
-    # Workaround inside this shell:
-    #   python3 -m venv /tmp/howler-extras && \
-    #   /tmp/howler-extras/bin/pip install smtp-user-enum && \
-    #   export PATH="/tmp/howler-extras/bin:$PATH"
+    # smtp-user-enum is not in nixpkgs — howler will skip it at startup
 
     # ── IKE ────────────────────────────────────────────────────────────
     ike-scan
@@ -73,8 +73,12 @@ in pkgs.mkShell {
   shellHook = ''
     echo ""
     echo "  Howler nix-shell ready."
-    echo "  python3 --version: $(python3 --version)"
-    echo "  Run: sudo python3 howler.py <target> [flags]"
+    echo "  python3: $(which python3)"
+    echo ""
+    # Alias that preserves PATH and PYTHONPATH through sudo
+    alias howler='sudo env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3 ${toString ./.}/howler.py'
+    echo "  Usage: howler <target> [flags]"
+    echo "         howler -f targets.lst [flags]"
     echo ""
   '';
 }
