@@ -7,9 +7,13 @@ MSF http_list/http_put/http_host/http_crawler removed — nikto and ffuf cover t
 
 from __future__ import annotations
 
+import logging
+
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
+
+log = logging.getLogger(__name__)
 
 
 class HttpModule(BaseModule):
@@ -43,14 +47,19 @@ class HttpModule(BaseModule):
             ))
 
         if config.tool("gowitness"):
+            # gowitness v3 CLI: `scan single --url`. Screenshots are auto-named
+            # into --screenshot-path (no per-file --destination anymore), so we
+            # leave output_file empty and let the organizer sweep *.png into
+            # http/images. --write-none disables the metadata DB/CSV writers.
             jobs.append(Job(
                 cmd=[
-                    "gowitness", "screenshot",
+                    "gowitness", "scan", "single",
                     "--url", base,
-                    "--destination", f"{host}-{port.portid}.png",
-                    "--disable-logging",
+                    "--screenshot-path", ".",
+                    "--screenshot-format", "png",
+                    "--write-none",
                 ],
-                output_file=f"{host}-{port.portid}.png",
+                output_file="",
                 category="http",
                 host=host,
                 description=f"gowitness {base}",
@@ -63,23 +72,36 @@ class HttpModule(BaseModule):
             )
 
             if config.tool("ffuf"):
-                jobs.append(Job(
-                    cmd=[
-                        "ffuf",
-                        "-w", fuzz_list,
-                        "-u", f"{base}/FUZZ",
-                        "-o", f"{host}-{port.portid}.{scheme}.ffuf",
-                        "-of", "json",
-                        "-fc", "302,400,401,403,404",
-                        "-r",
-                        "-recursion", "-recursion-depth", "2",
-                        "-s",
-                    ],
-                    output_file=f"{host}-{port.portid}.{scheme}.ffuf",
-                    category="http",
-                    host=host,
-                    description=f"ffuf {base}",
-                ))
+                # ffuf aborts with a usage dump if the wordlist can't be read.
+                # Auto-detect the SecLists install (the default paths don't exist
+                # on every distro, e.g. NixOS); skip loudly if nothing is found
+                # rather than launching a doomed job.
+                wordlist = config.resolve_wordlist(fuzz_list)
+                if wordlist:
+                    jobs.append(Job(
+                        cmd=[
+                            "ffuf",
+                            "-w", str(wordlist),
+                            "-u", f"{base}/FUZZ",
+                            "-o", f"{host}-{port.portid}.{scheme}.ffuf",
+                            "-of", "json",
+                            "-fc", "302,400,401,403,404",
+                            "-r",
+                            "-recursion", "-recursion-depth", "2",
+                            "-s",
+                        ],
+                        output_file=f"{host}-{port.portid}.{scheme}.ffuf",
+                        category="http",
+                        host=host,
+                        description=f"ffuf {base}",
+                    ))
+                else:
+                    log.warning(
+                        f"ffuf wordlist not found ({fuzz_list}) and no SecLists "
+                        f"install auto-detected — skipping web fuzzing for {base}. "
+                        f"Set wordlists.http_fuzz_small / http_fuzz_large in "
+                        f"config.yaml, or export HOWLER_SECLISTS=/path/to/seclists."
+                    )
 
             if config.tool("nikto"):
                 ssl_flag = ["-ssl"] if port.ssl else []

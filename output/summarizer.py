@@ -59,22 +59,43 @@ def run(results: Optional[list[ScanResult]] = None, jsonl_output: bool = True) -
 
 
 def _write_jsonl(results: list[ScanResult]) -> None:
-    """Write one JSON object per ScanResult to findings.jsonl."""
+    """
+    Write one JSON object per ScanResult to findings.jsonl.
+
+    Every job is recorded — including failures — with an explicit ``status``
+    ("ok" | "failed" | "timeout") so a non-zero run can't be mistaken for a
+    completed one. A console warning tallies anything that didn't succeed.
+    """
     path = Path("findings.jsonl")
     count = 0
+    failed = 0
     with open(path, "w") as f:
         for r in results:
-            if r.returncode == 0 or r.stdout.strip():
-                entry = {
-                    "host": r.job.host,
-                    "category": r.job.category,
-                    "tool": r.job.cmd[0] if r.job.cmd else "",
-                    "description": r.job.description,
-                    "output_file": r.job.output_file,
-                    "returncode": r.returncode,
-                    "duration": round(r.duration, 2),
-                    "timed_out": r.timed_out,
-                }
-                f.write(json.dumps(entry) + "\n")
-                count += 1
+            if r.timed_out:
+                status = "timeout"
+            elif r.returncode == 0:
+                status = "ok"
+            else:
+                status = "failed"
+            if status != "ok":
+                failed += 1
+            entry = {
+                "host": r.job.host,
+                "category": r.job.category,
+                "tool": r.job.cmd[0] if r.job.cmd else "",
+                "description": r.job.description,
+                "output_file": r.job.output_file,
+                "returncode": r.returncode,
+                "status": status,
+                "duration": round(r.duration, 2),
+                "timed_out": r.timed_out,
+            }
+            f.write(json.dumps(entry) + "\n")
+            count += 1
     log.info(f"Wrote {count} findings to {path}")
+    if failed:
+        log.warning(
+            f"{failed} of {count} jobs did not complete successfully "
+            f"(non-zero exit or timeout). Inspect 'status' in {path} before "
+            f"trusting coverage."
+        )

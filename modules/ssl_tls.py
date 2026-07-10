@@ -23,7 +23,7 @@ class SslTlsModule(BaseModule):
         return [Job(
             cmd=[
                 tool,
-                "--no-color",
+                "--color", "0",   # testssl has no --no-color; 0 = no mark-up
                 "--quiet",
                 "--logfile", f"{host}-{port.portid}.misc.ssl",
                 f"{host}:{port.portid}",

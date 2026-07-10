@@ -5,10 +5,62 @@ Loads config.yaml and merges with hardcoded defaults.
 
 from __future__ import annotations
 
+import functools
+import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+
+@functools.lru_cache(maxsize=1)
+def _detect_seclists_roots() -> tuple[Path, ...]:
+    """
+    Locate installed SecLists trees across distros/package managers.
+
+    Distros disagree on where SecLists lands: Kali uses /usr/share/seclists,
+    Nixpkgs installs to <prefix>/share/wordlists/seclists, etc. Under sudo the
+    real profile is the invoking user's (SUDO_USER), not root's — so we probe
+    those too. Cheap: one stat per candidate, memoised for the whole run.
+    """
+    candidates: list[str] = []
+
+    # Explicit override wins.
+    for var in ("HOWLER_SECLISTS", "SECLISTS_ROOT"):
+        if os.environ.get(var):
+            candidates.append(os.environ[var])
+
+    candidates += [
+        "/usr/share/seclists",
+        "/usr/share/wordlists/seclists",          # Kali symlink / Nix convention
+        "/run/current-system/sw/share/wordlists/seclists",   # NixOS systemPackages
+        "/run/current-system/sw/share/seclists",
+        "~/.nix-profile/share/wordlists/seclists",           # Nix user profile
+        "~/.nix-profile/share/seclists",
+        "/opt/seclists",
+        "/opt/SecLists",
+        "/usr/local/share/seclists",
+        "/opt/homebrew/share/seclists",           # macOS
+    ]
+
+    # Under sudo, HOME/~ point at root; the wordlists usually belong to SUDO_USER.
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        candidates += [
+            f"/home/{sudo_user}/.nix-profile/share/wordlists/seclists",
+            f"/home/{sudo_user}/.nix-profile/share/seclists",
+            f"/etc/profiles/per-user/{sudo_user}/share/wordlists/seclists",
+            f"/etc/profiles/per-user/{sudo_user}/share/seclists",
+        ]
+
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for raw in candidates:
+        p = Path(raw).expanduser()
+        if p not in seen and p.is_dir():
+            seen.add(p)
+            roots.append(p)
+    return tuple(roots)
 
 try:
     import yaml
@@ -102,6 +154,30 @@ class Config:
 
     def tool_available(self, name: str) -> bool:
         return self.tool(name) is not None
+
+    def resolve_wordlist(self, configured: "str | Path") -> Optional[Path]:
+        """
+        Resolve a wordlist path, falling back to auto-detected SecLists roots.
+
+        If the configured path exists, use it verbatim. Otherwise, if it points
+        inside a SecLists tree (…/seclists/<suffix>), re-root <suffix> against
+        each detected install so the default config works without edits on any
+        distro. Returns None if nothing matches (caller should skip + warn).
+        """
+        p = Path(configured).expanduser()
+        if p.is_file():
+            return p
+
+        parts = p.parts
+        for i in range(len(parts) - 1, -1, -1):
+            if parts[i].lower() == "seclists":
+                suffix = Path(*parts[i + 1:])
+                for root in _detect_seclists_roots():
+                    candidate = root / suffix
+                    if candidate.is_file():
+                        return candidate
+                break
+        return None
 
 
 def load_config(path: Optional[Path] = None) -> Config:

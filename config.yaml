@@ -23,6 +23,9 @@ nmap:
     cmd: "whoami"
     httpspider_maxpagecount: 100
 
+# SecLists paths below are the Kali defaults. If they don't exist, Howler
+# auto-detects common SecLists installs (Nix, Homebrew, /opt, SUDO_USER's
+# profile, ...). Override here or export HOWLER_SECLISTS=/path/to/seclists.
 wordlists:
   user_dict: /usr/share/ncrack/minimal.usr
   pass_dict: /usr/share/seclists/Passwords/unix_passwords.txt

@@ -118,7 +118,10 @@ class AsyncJobRunner:
             # Write stdout to output_file for tools that don't write their own file
             # (e.g. whatweb, wafw00f). Tools like ffuf/nmap write their own file via
             # -o/-oA flags, so we skip if the file already exists.
-            if job.output_file and stdout.strip():
+            # Only capture stdout on success: a failed tool typically dumps its
+            # usage/help to stdout, and writing that produces convincing-looking
+            # stub files that hide the failure (see summarizer 'status' field).
+            if job.output_file and returncode == 0 and not timed_out and stdout.strip():
                 out_path = Path(job.output_file)
                 if not out_path.exists():
                     try:
