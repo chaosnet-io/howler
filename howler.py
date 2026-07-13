@@ -12,33 +12,43 @@
 #   dnsrecon ike-scan showmount msfconsole
 
 import argparse
-import asyncio
-import ipaddress
-import logging
-import signal
 import subprocess
 import sys
-import time
-from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
-from rich.console import Console
-from rich.logging import RichHandler
-
-from config import Config, load_config
-from models import HostScan, Job
-from modules import ModuleRegistry, build_default_registry
-from modules.brute import BruteModule
-from runner import AsyncJobRunner
-from scanner import portscan, xml_parser
-from scanner.discovery import run_discovery
-from scanner.portscan import resolve_hostname
-from output import organizer, summarizer
-
 VERSION = "2.0.0"
 
-console = Console()
+# Heavy imports (third-party 'rich' + the internal modules that depend on it)
+# are deferred behind this guard. Only stdlib is imported above. This keeps the
+# --install-prereqs bootstrap reachable when 'rich'/'pyyaml' aren't installed
+# yet, and turns a missing dependency into a clear, actionable message instead
+# of a raw ModuleNotFoundError traceback (see _fail_missing_dep / __main__).
+try:
+    import asyncio
+    import ipaddress
+    import logging
+    import signal
+    import time
+
+    from rich.console import Console
+    from rich.logging import RichHandler
+
+    from config import Config, load_config
+    from models import HostScan, Job
+    from modules import ModuleRegistry, build_default_registry
+    from modules.brute import BruteModule
+    from runner import AsyncJobRunner
+    from scanner import portscan, xml_parser
+    from scanner.discovery import run_discovery
+    from scanner.portscan import resolve_hostname
+    from output import organizer, summarizer
+
+    console = Console()
+    _MISSING_DEP: Optional[str] = None
+except ImportError as _import_err:
+    console = None  # type: ignore[assignment]
+    _MISSING_DEP = _import_err.name or "rich"
 
 
 # ── Banner ──────────────────────────────────────────────────────────────────
@@ -113,7 +123,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
     if not (args.install_prereqs or args.cleanup) and \
             args.target_file is None and args.single_address is None:
-        console.print("\n\t[bold red][ No target specified ][/bold red]\n")
+        # Plain print (not rich): parse_args runs before the dependency check.
+        print("\n\t[ No target specified ]\n")
         parser.print_help()
         print()
         sys.exit(0)
@@ -315,32 +326,59 @@ def root_check() -> None:
         sys.exit(1)
 
 
+def _fail_missing_dep(name: Optional[str]) -> None:
+    """
+    Print an actionable message for a missing Python dependency and exit.
+
+    Runs before 'rich' is guaranteed to exist, so it uses plain print(), not the
+    rich console.
+    """
+    dep = name or "rich"
+    print(
+        f"\n\t[ Missing Python dependency: {dep!r} ]\n\n"
+        "Howler needs the 'rich' and 'pyyaml' packages.\n\n"
+        "  Kali / Debian / Ubuntu (pip is blocked by PEP 668 — use apt):\n"
+        "    sudo apt install python3-rich python3-yaml\n\n"
+        "  Other systems:\n"
+        "    pip install rich pyyaml\n\n"
+        "  Or let Howler try automatically:\n"
+        "    sudo ./howler.py --install-prereqs\n\n"
+        "Note: under sudo the deps must be installed for the ROOT/system Python,\n"
+        "not only your user environment — that is the usual cause of this error.\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
 def install_prereqs() -> None:
     """
     Install pyyaml and rich.
     On Debian/Kali systems, pip install is blocked by PEP 668 (externally-managed-environment).
     Try apt first, fall back to pip with --break-system-packages only if apt is unavailable.
+
+    Uses plain print() (not the rich console): this runs precisely when 'rich'
+    may be absent.
     """
     null = subprocess.DEVNULL
 
     # Detect Debian/Ubuntu/Kali — use apt if available
     apt = subprocess.run(["which", "apt-get"], capture_output=True).returncode == 0
     if apt:
-        console.print("Detected apt — installing via apt-get...")
+        print("Detected apt — installing via apt-get...")
         pkgs = ["python3-yaml", "python3-rich"]
         result = subprocess.run(
             ["apt-get", "install", "-yqq", *pkgs],
             stdout=null, stderr=null,
         )
         if result.returncode == 0:
-            console.print("[green]Prerequisites installed via apt. Relaunch howler.[/green]")
+            print("Prerequisites installed via apt. Relaunch howler.")
             sys.exit(0)
-        console.print("[yellow]apt-get failed, falling back to pip...[/yellow]")
+        print("apt-get failed, falling back to pip...")
 
     # Non-Debian systems or apt failure — standard pip
     result = subprocess.run(["pip3", "install", "pyyaml", "rich"], stdout=null, stderr=null)
     if result.returncode == 0:
-        console.print("[green]Prerequisites installed via pip. Relaunch howler.[/green]")
+        print("Prerequisites installed via pip. Relaunch howler.")
         sys.exit(0)
 
     # PEP 668 managed environment — offer the override flag
@@ -349,13 +387,14 @@ def install_prereqs() -> None:
         stdout=null, stderr=null,
     )
     if result.returncode == 0:
-        console.print("[green]Prerequisites installed. Relaunch howler.[/green]")
+        print("Prerequisites installed. Relaunch howler.")
         sys.exit(0)
 
-    console.print(
-        "[red]Automatic install failed.[/red]\n"
-        "On Kali/Debian, run:  apt-get install python3-yaml python3-rich\n"
-        "Otherwise:            pip3 install pyyaml rich"
+    print(
+        "Automatic install failed.\n"
+        "On Kali/Debian, run:  sudo apt install python3-yaml python3-rich\n"
+        "Otherwise:            pip3 install pyyaml rich",
+        file=sys.stderr,
     )
     sys.exit(1)
 
@@ -377,11 +416,20 @@ def init_logging(config: Config) -> None:
 
 
 if __name__ == "__main__":
+    # Parse args first with stdlib argparse — no third-party deps required — so
+    # the --install-prereqs bootstrap works even when rich/pyyaml are missing.
+    args = parse_args(sys.argv[1:])
+
+    if args.install_prereqs:
+        install_prereqs()  # exits
+
+    # Everything below needs rich (and the modules that import it).
+    if _MISSING_DEP is not None:
+        _fail_missing_dep(_MISSING_DEP)  # exits
+
     banner()
     root_check()
     signal.signal(signal.SIGTERM, signal_term_handler)
-
-    args = parse_args(sys.argv[1:])
 
     config = load_config(args.config if hasattr(args, "config") else None)
     config.enable_brute = args.brute
@@ -389,9 +437,6 @@ if __name__ == "__main__":
 
     init_logging(config)
     logging.debug(f"Arguments: {args}")
-
-    if args.install_prereqs:
-        install_prereqs()
 
     if args.cleanup:
         console.print("Cleanup requested...")
