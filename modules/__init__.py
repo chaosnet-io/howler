@@ -84,6 +84,11 @@ def build_default_registry() -> ModuleRegistry:
     from modules.kerberos import KerberosModule
     from modules.winrm import WinrmModule
     from modules.rdp import RdpModule
+    from modules.redis import RedisModule
+    from modules.rsync import RsyncModule
+    from modules.mssql import MssqlModule
+    from modules.mysql import MysqlModule
+    from modules.postgres import PostgresModule
     # RMI module removed: nmap NSE rmi-vuln-classloader (already in nse_tcp)
     # covers the same ground without spawning msfconsole per host.
 
@@ -105,4 +110,10 @@ def build_default_registry() -> ModuleRegistry:
     registry.register(KerberosModule())
     registry.register(WinrmModule())
     registry.register(RdpModule())
+    # Database / data store coverage
+    registry.register(RedisModule())
+    registry.register(RsyncModule())
+    registry.register(MssqlModule())
+    registry.register(MysqlModule())
+    registry.register(PostgresModule())
     return registry

@@ -78,6 +78,13 @@ in pkgs.mkShell {
     # kerbrute — not in nixpkgs; grab from GitHub releases
     # impacket-GetNPUsers — pip install impacket
     # rdp-sec-check — not in nixpkgs; grab from GitHub
+
+    # ── Databases / data stores ──────────────────────────────────────────
+    redis             # provides redis-cli
+    rsync
+    postgresql        # provides psql
+    mariadb-connector-c  # provides mysql client
+    # impacket-mssqlclient — pip install impacket (same package as GetNPUsers)
   ];
 
   shellHook = ''

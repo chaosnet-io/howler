@@ -35,6 +35,7 @@ _ALL_TOOLS = (
     "ssh-audit", "smtp-user-enum", "dnsrecon", "ike-scan", "showmount",
     "onesixtyone", "ipmitool", "windapsearch", "kerbrute",
     "impacket-GetNPUsers", "curl", "rdp-sec-check",
+    "redis-cli", "rsync", "impacket-mssqlclient", "mysql", "psql",
 )
 
 

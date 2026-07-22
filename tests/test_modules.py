@@ -22,8 +22,13 @@ from modules.ike import IkeModule
 from modules.ipmi import IpmiModule
 from modules.kerberos import KerberosModule
 from modules.ldap import LdapModule
+from modules.mssql import MssqlModule
+from modules.mysql import MysqlModule
 from modules.nfs import NfsModule
+from modules.postgres import PostgresModule
 from modules.rdp import RdpModule
+from modules.redis import RedisModule
+from modules.rsync import RsyncModule
 from modules.smb import SmbModule
 from modules.smtp import SmtpModule
 from modules.snmp import SnmpModule
@@ -124,6 +129,28 @@ _MATCH_CASES = [
     # RDP module — port 3389 / name "ms-wbt-server"
     (RdpModule, "3389", "tcp", "ms-wbt-server", "", False, True),
     (RdpModule, "80", "tcp", "http", "", False, False),
+
+    # Redis module — port 6379 / name "redis"
+    (RedisModule, "6379", "tcp", "redis", "", False, True),
+    (RedisModule, "80", "tcp", "http", "", False, False),
+
+    # RSync module — port 873 / name "rsync"
+    (RsyncModule, "873", "tcp", "rsync", "", False, True),
+    (RsyncModule, "80", "tcp", "http", "", False, False),
+
+    # MSSQL module — port 1433 / names "mssql" or "ms-sql-s"
+    (MssqlModule, "1433", "tcp", "mssql", "", False, True),
+    (MssqlModule, "1433", "tcp", "ms-sql-s", "", False, True),
+    (MssqlModule, "80", "tcp", "http", "", False, False),
+
+    # MySQL module — port 3306 / name "mysql"
+    (MysqlModule, "3306", "tcp", "mysql", "", False, True),
+    (MysqlModule, "80", "tcp", "http", "", False, False),
+
+    # PostgreSQL module — port 5432 / names "postgresql" or "postgres"
+    (PostgresModule, "5432", "tcp", "postgresql", "", False, True),
+    (PostgresModule, "5432", "tcp", "postgres", "", False, True),
+    (PostgresModule, "80", "tcp", "http", "", False, False),
 ]
 
 
@@ -617,6 +644,123 @@ def test_rdp_jobs_no_tool_returns_empty(config, port):
     config.tool_paths.pop("rdp-sec-check")
     p = port(portid="3389", name="ms-wbt-server")
     assert RdpModule().jobs(HOST, p, config) == []
+
+
+# ── Redis Module ────────────────────────────────────────────────────────────
+
+def test_redis_jobs_builds_redis_cli_cmd(config, port):
+    """Redis module fires redis-cli INFO — catches unauthenticated instances."""
+    p = port(portid="6379", protocol="tcp", name="redis")
+    jobs = RedisModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/redis-cli"
+    assert "-h" in job.cmd and HOST in job.cmd
+    assert "-p" in job.cmd and "6379" in job.cmd
+    assert "INFO" in job.cmd
+    assert "--connect-timeout" in job.cmd
+    assert job.category == "misc"
+    assert "redis" in job.output_file
+
+
+def test_redis_jobs_no_tool_returns_empty(config, port):
+    config.tool_paths.pop("redis-cli")
+    p = port(portid="6379", name="redis")
+    assert RedisModule().jobs(HOST, p, config) == []
+
+
+# ── RSync Module ────────────────────────────────────────────────────────────
+
+def test_rsync_jobs_builds_list_only_cmd(config, port):
+    """RSync module fires rsync --list-only to enumerate exposed shares."""
+    p = port(portid="873", protocol="tcp", name="rsync")
+    jobs = RsyncModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/rsync"
+    assert "--list-only" in job.cmd
+    assert "--contimeout=10" in job.cmd
+    assert f"rsync://{HOST}:873/" in job.cmd[-1]
+    assert job.category == "misc"
+    assert "rsync" in job.output_file
+
+
+def test_rsync_jobs_no_tool_returns_empty(config, port):
+    config.tool_paths.pop("rsync")
+    p = port(portid="873", name="rsync")
+    assert RsyncModule().jobs(HOST, p, config) == []
+
+
+# ── MSSQL Module ────────────────────────────────────────────────────────────
+
+def test_mssql_jobs_builds_impacket_mssqlclient_cmd(config, port):
+    """MSSQL module fires impacket-mssqlclient with a null session probe."""
+    p = port(portid="1433", protocol="tcp", name="mssql")
+    jobs = MssqlModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/impacket-mssqlclient"
+    assert "-no-pass" in job.cmd
+    assert "-port" in job.cmd and "1433" in job.cmd
+    assert HOST in job.cmd[-1]
+    assert job.category == "misc"
+    assert "mssql" in job.output_file
+
+
+def test_mssql_jobs_no_tool_returns_empty(config, port):
+    config.tool_paths.pop("impacket-mssqlclient")
+    p = port(portid="1433", name="mssql")
+    assert MssqlModule().jobs(HOST, p, config) == []
+
+
+# ── MySQL Module ────────────────────────────────────────────────────────────
+
+def test_mysql_jobs_builds_version_probe_cmd(config, port):
+    """MySQL module fires a version probe via mysql client."""
+    p = port(portid="3306", protocol="tcp", name="mysql")
+    jobs = MysqlModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/mysql"
+    assert "-h" in job.cmd and HOST in job.cmd
+    assert "-P" in job.cmd and "3306" in job.cmd
+    assert "-N" in job.cmd  # no column names
+    assert "-B" in job.cmd  # batch mode
+    assert "SELECT VERSION();" in job.cmd
+    assert "--connect-timeout=10" in job.cmd
+    assert job.category == "misc"
+    assert "mysql" in job.output_file
+
+
+def test_mysql_jobs_no_tool_returns_empty(config, port):
+    config.tool_paths.pop("mysql")
+    p = port(portid="3306", name="mysql")
+    assert MysqlModule().jobs(HOST, p, config) == []
+
+
+# ── PostgreSQL Module ───────────────────────────────────────────────────────
+
+def test_postgres_jobs_builds_version_probe_cmd(config, port):
+    """PostgreSQL module fires a version probe via psql with -w (no prompt)."""
+    p = port(portid="5432", protocol="tcp", name="postgresql")
+    jobs = PostgresModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/psql"
+    assert "-h" in job.cmd and HOST in job.cmd
+    assert "-p" in job.cmd and "5432" in job.cmd
+    assert "-U" in job.cmd and "postgres" in job.cmd
+    assert "-w" in job.cmd  # never prompt for password
+    assert "-t" in job.cmd  # tuples only
+    assert "SELECT version();" in job.cmd
+    assert job.category == "misc"
+    assert "postgres" in job.output_file
+
+
+def test_postgres_jobs_no_tool_returns_empty(config, port):
+    config.tool_paths.pop("psql")
+    p = port(portid="5432", name="postgresql")
+    assert PostgresModule().jobs(HOST, p, config) == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════

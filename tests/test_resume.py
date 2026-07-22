@@ -158,6 +158,12 @@ def test_descriptions_unique_per_module(config, port):
         port(portid="5985", protocol="tcp", name="wsman"),
         port(portid="5986", protocol="tcp", name="wsman"),
         port(portid="3389", protocol="tcp", name="ms-wbt-server"),
+        # Databases / data stores
+        port(portid="6379", protocol="tcp", name="redis"),
+        port(portid="873", protocol="tcp", name="rsync"),
+        port(portid="1433", protocol="tcp", name="mssql"),
+        port(portid="3306", protocol="tcp", name="mysql"),
+        port(portid="5432", protocol="tcp", name="postgresql"),
     ]
 
     # Map description → set of (cmd, output_file, category) tuples.

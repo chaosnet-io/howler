@@ -98,6 +98,18 @@ nix-shell        # drops you into a shell with everything available
 sudo python3 howler.py <target>
 ```
 
+**Arch Linux** — pacman for official packages, yay (or paru) for AUR, pip for the rest:
+```bash
+sudo pacman -S --needed python-yaml python-rich masscan nmap nikto nfs-utils hydra ipmitool curl ssh-audit wpscan testssl.sh impacket valkey rsync postgresql mariadb-clients
+yay -S --needed whatweb wafw00f ike-scan ffuf gowitness joomscan python-dnsrecon onesixtyone-git kerbrute-bin smtp-user-enum-git
+pip install --break-system-packages enum4linux-ng windapsearch
+```
+`rdp-sec-check` isn't packaged — grab it from GitHub:
+```bash
+git clone https://github.com/CiscoCX/rdp-sec-check /opt/rdp-sec-check
+sudo ln -s /opt/rdp-sec-check/rdp-sec-check.pl /usr/local/bin/rdp-sec-check
+```
+
 ### System Tools
 
 Howler checks for each tool at startup and skips modules whose tools aren't found. Only `masscan` and `nmap` are strictly required to run the core pipeline — everything else is optional.
@@ -125,6 +137,11 @@ Howler checks for each tool at startup and skips modules whose tools aren't foun
 | `impacket-GetNPUsers` | kerberos | — (new: ASREPRoasting) |
 | `curl` | winrm | — (new: WinRM banner check) |
 | `rdp-sec-check` | rdp | — (new: RDP protocol/NLA downgrade checks) |
+| `redis-cli` | redis | — (new: unauth INFO probe on 6379) |
+| `rsync` | rsync | — (new: --list-only share enumeration on 873) |
+| `impacket-mssqlclient` | mssql | — (new: null session connection probe on 1433) |
+| `mysql` | mysql | — (new: version probe on 3306, separate from brute) |
+| `psql` | postgres | — (new: version probe on 5432, separate from brute) |
 | `dnsrecon` | dns | dnsrecon |
 | `ike-scan` | ike | ike-scan |
 | `showmount` | nfs | showmount |
@@ -139,7 +156,7 @@ cipher-zero detection.
 
 **Kali Linux quick install:**
 ```bash
-apt-get install python3-yaml python3-rich masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh onesixtyone ipmitool curl rdp-sec-check -y
+apt-get install python3-yaml python3-rich masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh onesixtyone ipmitool curl rdp-sec-check redis-tools rsync default-mysql-client postgresql-client -y
 pip install ssh-audit impacket windapsearch --break-system-packages
 go install github.com/ropnop/kerbrute@latest
 go install github.com/sensepost/gowitness@latest
@@ -248,7 +265,7 @@ features:
 │   └── gnmap/             nmap .gnmap grep files
 ├── http/                  web tool output (whatweb, wafw00f, ffuf, nikto, wpscan...)
 │   └── images/            gowitness screenshots
-├── misc/                  DNS, NFS, IKE, IPMI, SSH audit, SNMP, TFTP-enum, FTP, LDAP, Kerberos, WinRM, RDP
+├── misc/                  DNS, NFS, IKE, IPMI, SSH audit, SNMP, TFTP-enum, FTP, LDAP, Kerberos, WinRM, RDP, Redis, RSync, MSSQL, MySQL, PostgreSQL
 │   └── ssl/               testssl.sh output
 ├── brute/                 hydra output
 ├── nmap.summary.txt       open ports and OS detection summary
