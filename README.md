@@ -97,7 +97,7 @@ Or run `sudo python3 howler.py --install-prereqs` and Howler will pick the right
 nix-shell        # drops you into a shell with everything available
 sudo python3 howler.py <target>
 ```
-If you're on **Arch Linux**, btw — pacman for official packages, yay (or paru) for AUR, pip for the rest:
+If you're using **Arch Linux**, btw — pacman for official packages, yay (or paru) for AUR, pip for the rest:
 ```bash
 sudo pacman -S --needed python-yaml python-rich masscan nmap nikto nfs-utils hydra ipmitool curl ssh-audit wpscan testssl.sh impacket valkey rsync postgresql mariadb-clients
 yay -S --needed whatweb wafw00f ike-scan ffuf gowitness joomscan python-dnsrecon onesixtyone-git kerbrute-bin smtp-user-enum-git
