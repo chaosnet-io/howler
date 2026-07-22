@@ -66,8 +66,11 @@ in pkgs.mkShell {
     # ── Brute force (--brute) ──────────────────────────────────────────
     thc-hydra        # installed as `hydra` on other distros; binary name stays `hydra`
 
-    # ── Metasploit (optional — large, comment out if not needed) ───────
-    # metasploit
+    # ── SNMP ─────────────────────────────────────────────────────────────
+    onesixtyone
+
+    # ── IPMI ─────────────────────────────────────────────────────────────
+    ipmitool
   ];
 
   shellHook = ''

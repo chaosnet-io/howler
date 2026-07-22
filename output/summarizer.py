@@ -31,10 +31,6 @@ _GREP_SUMMARIES = [
         "nmap.summary.txt",
     ),
     (
-        "grep -H '[+]' msf/*.msf.* > msf.summary.txt 2>/dev/null",
-        "msf.summary.txt",
-    ),
-    (
         "for i in $(grep -L ERROR http/*.whatweb 2>/dev/null); do grep -H Summary $i; done "
         "> http.summary.txt 2>/dev/null",
         "http.summary.txt",

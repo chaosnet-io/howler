@@ -52,7 +52,8 @@ tools:
   dnsrecon: null
   "ike-scan": null
   showmount: null
-  msfconsole: null
+  onesixtyone: null
+  ipmitool: null
 
 features:
   randomize_jobs: false

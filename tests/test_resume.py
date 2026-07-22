@@ -148,8 +148,7 @@ def test_descriptions_unique_per_module(config, port):
         port(portid="500", protocol="udp", name="isakmp"),
         port(portid="4500", protocol="udp", name="nat-t-ike"),
         port(portid="623", protocol="udp", name="rmcp"),
-        port(portid="49152", protocol="tcp", name="http"),
-        port(portid="1099", protocol="tcp", name="java-rmi"),
+        port(portid="69", protocol="udp", name="tftp"),
     ]
 
     # Map description → set of (cmd, output_file, category) tuples.

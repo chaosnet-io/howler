@@ -21,15 +21,12 @@ _POST_NMAP_CMDS = [
 
 # Shell move commands run at the very end (sorts everything else)
 _FINAL_CMDS = [
-    "mkdir -p msf && mv -f *.msf.* msf/ 2>/dev/null || true",
     "mkdir -p misc && mv -f *.misc.* misc/ 2>/dev/null || true",
     "mkdir -p misc/ssl && mv -f misc/*.ssl misc/ssl/ 2>/dev/null || true",
     "mkdir -p http && mv -f *.http*.* http/ 2>/dev/null || true",
-    "mkdir -p http && mv -f *.waf http/ *.whatweb http/ *.nikto http/ *.ffuf http/ *.wpscan http/ *.joomscan http/ 2>/dev/null || true",
+    "mkdir -p http && mv -f *.waf http/ *.whatweb http/ *.nikto http/ *.ffuf http/ *.wpscan http/ *.joomscan http/ *.tomcat_brute http/ 2>/dev/null || true",
     "mkdir -p http/images && mv -f *.png http/images/ 2>/dev/null || true",
     "mkdir -p brute && mv -f *.brute brute/ 2>/dev/null || true",
-    # Remove leftover .msf.* from brute dir if any ended up there
-    "mv -f brute/*.msf.* msf/ 2>/dev/null || true",
     "find . -type d -maxdepth 3 -empty -delete 2>/dev/null || true",
 ]
 

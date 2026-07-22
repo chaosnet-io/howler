@@ -1,7 +1,8 @@
 """
 Brute-force module — flag-gated (requires --brute CLI flag).
 Replaces medusa with hydra (more actively maintained, broader protocol support).
-MSF tftpbrute kept for TFTP as no standalone alternative.
+TFTP brute previously used MSF tftpbrute; replaced with nmap NSE tftp-enum
+(invokes nmap standalone, no msfconsole dependency).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ _HYDRA_PROTOCOLS = {"ftp", "mssql", "mysql", "rexec", "rlogin", "rsh", "smtp", "
 
 
 class BruteModule(BaseModule):
-    required_tools = ["hydra"]
+    required_tools = ["hydra", "nmap"]
 
     def match(self, port: PortInfo) -> bool:
         if not self._config_brute_enabled:
@@ -34,9 +35,9 @@ class BruteModule(BaseModule):
         if not config.enable_brute:
             return []
 
-        # TFTP via MSF
+        # TFTP via nmap NSE tftp-enum
         if port.portid == "69" or "tftp" in port.name:
-            return _tftp_brute(host, port, config)
+            return _tftp_enum(host, port, config)
 
         # Auth protocols via hydra
         if port.name in _HYDRA_PROTOCOLS:
@@ -72,20 +73,27 @@ def _hydra_brute(host: str, port: PortInfo, config: Config) -> list[Job]:
     )]
 
 
-def _tftp_brute(host: str, port: PortInfo, config: Config) -> list[Job]:
-    msf = config.tool("msfconsole")
-    if not msf:
+def _tftp_enum(host: str, port: PortInfo, config: Config) -> list[Job]:
+    """TFTP enumeration via nmap NSE tftp-enum.
+
+    Uses nmap directly (no msfconsole). tftp-enum reads a default filelist
+    shipped with nmap; can be overridden via ``tftp-enum.filelist=<path>`` in
+    nse_args, but we keep defaults to avoid wordlist plumbing.
+    """
+    nmap = config.tool("nmap")
+    if not nmap:
         return []
-    module = "auxiliary/scanner/tftp/tftpbrute"
     return [Job(
         cmd=[
-            msf, "-q", "-x",
-            f"use {module}; set THREADS 6; set RHOSTS {host}; "
-            f"set RPORT {port.portid}; run; exit",
-            "-o", f"{host}-{port.portid}.msf.tftpbrute",
+            nmap,
+            "-sU", "-p", "69",
+            "--script", "tftp-enum",
+            "-n", "-Pn",
+            host,
         ],
-        output_file=f"{host}-{port.portid}.msf.tftpbrute",
-        category="brute",
+        output_file=f"{host}-{port.portid}.misc.tftp_enum",
+        category="misc",
         host=host,
-        description=f"MSF tftpbrute {host}:{port.portid}",
+        description=f"nmap tftp-enum {host}:{port.portid}",
     )]
+

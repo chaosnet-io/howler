@@ -13,7 +13,6 @@
 
 import argparse
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -522,13 +521,6 @@ if __name__ == "__main__":
         organizer.post_nmap_cleanup()
         organizer.final_cleanup()
         sys.exit(0)
-
-    # Metasploit's DB speeds up MSF-backed modules, but MSF is optional — start
-    # the DB only if present, never hard-crash when it (or all of MSF) is absent.
-    if shutil.which("msfdb"):
-        subprocess.run(["msfdb", "start"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        logging.info("msfdb not found — skipping Metasploit DB startup")
 
     try:
         asyncio.run(run_pipeline(args, config))

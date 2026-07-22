@@ -2,7 +2,7 @@
 HTTP/HTTPS module.
 Tools: wafw00f, whatweb, ffuf (replaces wfuzz), nikto, gowitness (replaces cutycapt+xvfb),
        wpscan, joomscan.
-MSF http_list/http_put/http_host/http_crawler removed — nikto and ffuf cover the same ground.
+Tomcat manager login brute uses hydra http-get against /manager/html (no msfconsole).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 
 class HttpModule(BaseModule):
-    required_tools = ["whatweb", "wafw00f", "ffuf", "nikto", "gowitness", "wpscan", "joomscan"]
+    required_tools = ["whatweb", "wafw00f", "ffuf", "nikto", "gowitness", "wpscan", "joomscan", "hydra"]
 
     def match(self, port: PortInfo) -> bool:
         return port.is_http
@@ -145,25 +145,26 @@ class HttpModule(BaseModule):
                     description=f"joomscan {base}",
                 ))
             elif any(x in port.product for x in ("tomcat", "jboss")):
-                # Tomcat/JBoss: use MSF if available
-                msf = config.tool("msfconsole")
-                if msf:
-                    ssl_val = str(port.ssl).lower()
-                    for module, ext in [
-                        ("auxiliary/scanner/http/tomcat_mgr_login", "tomcat_mgr_login"),
-                        ("auxiliary/scanner/http/jboss_vulnscan", "jboss_vulnscan"),
-                    ]:
-                        jobs.append(Job(
-                            cmd=[
-                                msf, "-q", "-x",
-                                f"use {module}; set THREADS 6; set RHOSTS {host}; "
-                                f"set RPORT {port.portid}; set SSL {ssl_val}; run; exit",
-                                "-o", f"{host}-{port.portid}.msf.{ext}",
-                            ],
-                            output_file=f"{host}-{port.portid}.msf.{ext}",
-                            category="msf",
-                            host=host,
-                            description=f"MSF {module} {host}:{port.portid}",
-                        ))
+                # Tomcat manager login brute via hydra (no msfconsole).
+                # JBoss exposure is also flagged by whatweb/nikto output.
+                hydra = config.tool("hydra")
+                if hydra and config.user_dict.exists() and config.pass_dict.exists():
+                    ssl_flag = ["-S"] if port.ssl else []
+                    jobs.append(Job(
+                        cmd=[
+                            hydra,
+                            "-L", str(config.user_dict),
+                            "-P", str(config.pass_dict),
+                            "-e", "ns",
+                            "-t", "8",
+                            *ssl_flag,
+                            "http-get",
+                            f"{base}/manager/html",
+                        ],
+                        output_file=f"{host}-{port.portid}.{scheme}.tomcat_brute",
+                        category="brute",
+                        host=host,
+                        description=f"hydra tomcat {base}/manager/html",
+                    ))
 
         return jobs

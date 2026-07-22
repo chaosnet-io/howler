@@ -79,7 +79,8 @@ def build_default_registry() -> ModuleRegistry:
     from modules.nfs import NfsModule
     from modules.ike import IkeModule
     from modules.ipmi import IpmiModule
-    from modules.rmi import RmiModule
+    # RMI module removed: nmap NSE rmi-vuln-classloader (already in nse_tcp)
+    # covers the same ground without spawning msfconsole per host.
 
     registry = ModuleRegistry()
     # ssl_tls registered first so testssl.sh runs on HTTPS ports alongside http tools
@@ -93,5 +94,4 @@ def build_default_registry() -> ModuleRegistry:
     registry.register(NfsModule())
     registry.register(IkeModule())
     registry.register(IpmiModule())
-    registry.register(RmiModule())
     return registry

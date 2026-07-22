@@ -45,7 +45,7 @@ Howler preserves the battle-tested pipeline from nightcall (masscan discovery �
 3. Port enumeration (nmap TCP + UDP with extensive NSE scripts)
 4. XML import (parse nmap output into structured host/port data)
 5. Follow-up scans (service-specific tools dispatched per open port)
-6. Bruteforcing (optional, --brute flag — hydra + MSF TFTP)
+6. Bruteforcing (optional, --brute flag — hydra; TFTP uses nmap NSE tftp-enum)
 7. Summarize (grep-based summaries + findings.jsonl)
 8. Organize (sort output files into categorised subdirectories)
 ```
@@ -114,18 +114,26 @@ Howler checks for each tool at startup and skips modules whose tools aren't foun
 | `gowitness` | http | `cutycapt` + `xvfb-run` |
 | `wpscan` | http (--web, Wordpress) | wpscan |
 | `joomscan` | http (--web, Joomla) | joomscan |
+| `hydra` | http (Tomcat), brute (--brute) | `medusa`; MSF `tomcat_mgr_login` |
 | `enum4linux-ng` | smb | `enum4linux` |
 | `ssh-audit` | ssh | MSF `ssh_enumusers` |
 | `smtp-user-enum` | smtp | MSF `smtp_enum` |
+| `onesixtyone` | snmp | MSF `snmp_login` |
+| `ipmitool` | ipmi | MSF `ipmi_version` + `ipmi_cipher_zero` |
 | `dnsrecon` | dns | dnsrecon |
 | `ike-scan` | ike | ike-scan |
 | `showmount` | nfs | showmount |
-| `hydra` | brute (--brute) | `medusa` |
-| `msfconsole` | snmp, ipmi, rmi, tftp | msfconsole |
+
+**Note:** RMI is handled by the nmap NSE `rmi-vuln-classloader` script
+(already in `nse_tcp`); no separate module is needed. TFTP brute uses
+nmap's `tftp-enum` NSE script. MSF `ipmi_dumphashes` (CVE-2013-4786 RAKP)
+has no widely-packaged standalone equivalent and is not replaced —
+nmap's `ipmi-cipher-zero` NSE script (already in `nse_udp`) covers
+cipher-zero detection.
 
 **Kali Linux quick install:**
 ```bash
-apt-get install python3-yaml python3-rich masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh -y
+apt-get install python3-yaml python3-rich masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh onesixtyone ipmitool -y
 pip install ssh-audit --break-system-packages
 go install github.com/sensepost/gowitness@latest
 go install github.com/ffuf/ffuf/v2@latest
@@ -233,12 +241,10 @@ features:
 │   └── gnmap/             nmap .gnmap grep files
 ├── http/                  web tool output (whatweb, wafw00f, ffuf, nikto, wpscan...)
 │   └── images/            gowitness screenshots
-├── msf/                   Metasploit module output
-├── misc/                  DNS, NFS, IKE, IPMI, SSH audit
+├── misc/                  DNS, NFS, IKE, IPMI, SSH audit, SNMP, TFTP-enum
 │   └── ssl/               testssl.sh output
-├── brute/                 hydra / MSF brute output
+├── brute/                 hydra output
 ├── nmap.summary.txt       open ports and OS detection summary
-├── msf.summary.txt        MSF positive findings
 ├── http.summary.txt       whatweb summaries
 ├── brute.summary.txt      successful credentials
 ├── findings.jsonl         structured findings (one JSON object per completed job)

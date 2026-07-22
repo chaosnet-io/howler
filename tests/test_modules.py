@@ -20,7 +20,6 @@ from modules.http import HttpModule
 from modules.ike import IkeModule
 from modules.ipmi import IpmiModule
 from modules.nfs import NfsModule
-from modules.rmi import RmiModule
 from modules.smb import SmbModule
 from modules.smtp import SmtpModule
 from modules.snmp import SnmpModule
@@ -90,13 +89,11 @@ _MATCH_CASES = [
 
     # IpmiModule
     (IpmiModule, "623", "udp", "rmcp", "", False, True),
-    (IpmiModule, "49152", "tcp", "http", "", False, True),
     (IpmiModule, "80", "tcp", "http", "", False, False),
 
-    # RmiModule
-    (RmiModule, "1099", "tcp", "java-rmi", "", False, True),
-    (RmiModule, "1099", "tcp", "rmi", "", False, True),
-    (RmiModule, "80", "tcp", "http", "", False, False),
+    # RMI module removed — nmap NSE rmi-vuln-classloader covers it.
+    # Add a regression guard so nobody accidentally re-adds an RMI module
+    # without thinking about the NSE duplication.
 ]
 
 
@@ -138,8 +135,8 @@ def test_ssl_tls_jobs_no_tool_returns_empty(config, port):
 
 # ── HttpModule ──────────────────────────────────────────────────────────────
 # Note: http.py checks tool availability via config.tool() but builds cmd with
-# bare tool names (e.g. "whatweb") rather than resolved paths. The MSF jobs
-# (tomcat/jboss) are the exception — they use config.tool("msfconsole").
+# bare tool names (e.g. "whatweb") rather than resolved paths. The Tomcat
+# hydra job is the exception — it uses config.tool("hydra").
 # These tests pin that current behaviour.
 
 
@@ -202,8 +199,8 @@ def test_http_jobs_joomla_cms_triggers_joomscan(config, port):
     assert any("joomscan" in j.description for j in jobs)
 
 
-def test_http_jobs_tomcat_triggers_msf(config, port):
-    """Tomcat/JBoss product → MSF tomcat_mgr_login + jboss_vulnscan.
+def test_http_jobs_tomcat_triggers_hydra(config, port):
+    """Tomcat/JBoss product → hydra http-get against /manager/html.
 
     Note: the http module checks ``"tomcat" in port.product`` (case-sensitive),
     so this relies on the XML parser lowercasing the product field. We pass
@@ -212,9 +209,20 @@ def test_http_jobs_tomcat_triggers_msf(config, port):
     config.enable_web = True
     p = port(portid="8080", name="http", product="apache tomcat")
     jobs = HttpModule().jobs(HOST, p, config)
-    msf_jobs = [j for j in jobs if j.category == "msf"]
-    assert len(msf_jobs) == 2  # tomcat_mgr_login + jboss_vulnscan
-    assert all(j.cmd[0] == "/fake/msfconsole" for j in msf_jobs)
+    brute_jobs = [j for j in jobs if j.category == "brute"]
+    assert len(brute_jobs) == 1
+    assert brute_jobs[0].cmd[0] == "/fake/hydra"
+    assert "http-get" in brute_jobs[0].cmd
+    assert "/manager/html" in brute_jobs[0].cmd[-1]
+
+
+def test_http_jobs_tomcat_no_hydra_when_wordlist_missing(config, port, tmp_path):
+    """Tomcat brute needs both user and pass dicts; if missing, skip silently."""
+    config.enable_web = True
+    config.user_dict = tmp_path / "missing.txt"
+    p = port(portid="8080", name="http", product="apache tomcat")
+    jobs = HttpModule().jobs(HOST, p, config)
+    assert all(j.category != "brute" for j in jobs)
 
 
 def test_http_jobs_individual_tool_missing_skipped(config, port):
@@ -330,17 +338,16 @@ def test_smtp_jobs_no_tool_returns_empty(config, port):
 
 # ── SnmpModule ──────────────────────────────────────────────────────────────
 
-def test_snmp_jobs_builds_msf_cmd(config, port):
+def test_snmp_jobs_builds_onesixtyone_cmd(config, port):
     p = port(portid="161", protocol="udp", name="snmp")
     jobs = SnmpModule().jobs(HOST, p, config)
     assert len(jobs) == 1
     job = jobs[0]
-    assert job.cmd[0] == "/fake/msfconsole"
-    # MSF argv layout: [msf, "-q", "-x", "<command string>", "-o", "<outfile>"]
-    msf_cmd = job.cmd[3]
-    assert "snmp_login" in msf_cmd
-    assert f"RHOSTS {HOST}" in msf_cmd
-    assert job.category == "msf"
+    assert job.cmd[0] == "/fake/onesixtyone"
+    assert "-c" in job.cmd  # community list
+    assert HOST in job.cmd
+    assert job.category == "misc"
+    assert "snmp" in job.output_file
 
 
 def test_snmp_jobs_snmp_dict_missing_returns_empty(config, port, tmp_path):
@@ -350,7 +357,7 @@ def test_snmp_jobs_snmp_dict_missing_returns_empty(config, port, tmp_path):
 
 
 def test_snmp_jobs_no_tool_returns_empty(config, port):
-    config.tool_paths.pop("msfconsole")
+    config.tool_paths.pop("onesixtyone")
     p = port(portid="161", name="snmp")
     assert SnmpModule().jobs(HOST, p, config) == []
 
@@ -404,49 +411,32 @@ def test_ike_jobs_no_tool_returns_empty(config, port):
 
 # ── IpmiModule ──────────────────────────────────────────────────────────────
 
-def test_ipmi_jobs_port_623_three_modules(config, port):
-    """Port 623 fires all three IPMI scanners."""
+def test_ipmi_jobs_port_623_runs_ipmitool(config, port):
+    """Port 623 fires a single ipmitool lan print job (replaces 3 MSF modules)."""
     p = port(portid="623", protocol="udp", name="rmcp")
     jobs = IpmiModule().jobs(HOST, p, config)
-    assert len(jobs) == 3
-    descs = " ".join(j.description for j in jobs)
-    assert "ipmi_version" in descs
-    assert "ipmi_dumphashes" in descs
-    assert "ipmi_cipher_zero" in descs
-    assert all(j.cmd[0] == "/fake/msfconsole" for j in jobs)
-    assert all(j.category == "msf" for j in jobs)
-
-
-def test_ipmi_jobs_port_49152_smt_only(config, port):
-    """Port 49152 fires only the SMT IPMI exposure check."""
-    p = port(portid="49152", protocol="tcp", name="http")
-    jobs = IpmiModule().jobs(HOST, p, config)
     assert len(jobs) == 1
-    assert "smt_ipmi_49152_exposure" in jobs[0].description
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/ipmitool"
+    assert "lan" in job.cmd
+    assert "print" in job.cmd
+    assert "-H" in job.cmd and HOST in job.cmd
+    assert "-I" in job.cmd and "lan" in job.cmd
+    assert job.category == "misc"
+    assert "ipmi" in job.output_file
 
 
 def test_ipmi_jobs_no_tool_returns_empty(config, port):
-    config.tool_paths.pop("msfconsole")
+    config.tool_paths.pop("ipmitool")
     p = port(portid="623", name="rmcp")
     assert IpmiModule().jobs(HOST, p, config) == []
 
 
-# ── RmiModule ───────────────────────────────────────────────────────────────
-
-def test_rmi_jobs_builds_msf_cmd(config, port):
-    p = port(portid="1099", name="java-rmi")
-    jobs = RmiModule().jobs(HOST, p, config)
-    assert len(jobs) == 1
-    job = jobs[0]
-    assert job.cmd[0] == "/fake/msfconsole"
-    assert "java_rmi_server" in job.cmd[3]
-    assert job.category == "msf"
-
-
-def test_rmi_jobs_no_tool_returns_empty(config, port):
-    config.tool_paths.pop("msfconsole")
-    p = port(portid="1099", name="java-rmi")
-    assert RmiModule().jobs(HOST, p, config) == []
+def test_ipmi_match_no_longer_includes_port_49152(port):
+    """49152 is now handled by HttpModule (whatweb/wafw00f/gowitness fire when
+    nmap reports it as http). IpmiModule.match() should not claim it."""
+    p = port(portid="49152", protocol="tcp", name="http")
+    assert IpmiModule().match(p) is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -482,13 +472,26 @@ def test_brute_jobs_ssl_adds_dash_S(config, port):
     assert "-S" in jobs[0].cmd
 
 
-def test_brute_jobs_tftp_uses_msf(config, port):
+def test_brute_jobs_tftp_uses_nmap_tftp_enum(config, port):
+    """TFTP brute previously used MSF tftpbrute; now uses nmap NSE tftp-enum."""
     config.enable_brute = True
     p = port(portid="69", protocol="udp", name="tftp")
     jobs = BruteModule().jobs(HOST, p, config)
     assert len(jobs) == 1
-    assert jobs[0].cmd[0] == "/fake/msfconsole"
-    assert "tftpbrute" in jobs[0].cmd[3]
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/nmap"
+    assert "tftp-enum" in job.cmd
+    assert "-sU" in job.cmd
+    assert HOST in job.cmd
+    assert job.category == "misc"
+    assert "tftp_enum" in job.output_file
+
+
+def test_brute_jobs_tftp_no_nmap_returns_empty(config, port):
+    config.enable_brute = True
+    config.tool_paths.pop("nmap")
+    p = port(portid="69", protocol="udp", name="tftp")
+    assert BruteModule().jobs(HOST, p, config) == []
 
 
 def test_brute_jobs_hydra_missing_returns_empty(config, port):
