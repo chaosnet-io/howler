@@ -33,7 +33,8 @@ _ALL_TOOLS = (
     "masscan", "nmap", "ffuf", "gowitness", "nikto", "whatweb", "wafw00f",
     "wpscan", "joomscan", "testssl.sh", "enum4linux-ng", "hydra",
     "ssh-audit", "smtp-user-enum", "dnsrecon", "ike-scan", "showmount",
-    "onesixtyone", "ipmitool",
+    "onesixtyone", "ipmitool", "windapsearch", "kerbrute",
+    "impacket-GetNPUsers", "curl", "rdp-sec-check",
 )
 
 

@@ -16,15 +16,20 @@ import pytest
 
 from modules.brute import BruteModule
 from modules.dns import DnsModule
+from modules.ftp import FtpModule
 from modules.http import HttpModule
 from modules.ike import IkeModule
 from modules.ipmi import IpmiModule
+from modules.kerberos import KerberosModule
+from modules.ldap import LdapModule
 from modules.nfs import NfsModule
+from modules.rdp import RdpModule
 from modules.smb import SmbModule
 from modules.smtp import SmtpModule
 from modules.snmp import SnmpModule
 from modules.ssh import SshModule
 from modules.ssl_tls import SslTlsModule
+from modules.winrm import WinrmModule
 
 
 HOST = "10.10.10.5"
@@ -94,6 +99,31 @@ _MATCH_CASES = [
     # RMI module removed — nmap NSE rmi-vuln-classloader covers it.
     # Add a regression guard so nobody accidentally re-adds an RMI module
     # without thinking about the NSE duplication.
+
+    # FTP module — port 21 / name "ftp"
+    (FtpModule, "21", "tcp", "ftp", "", False, True),
+    (FtpModule, "80", "tcp", "http", "", False, False),
+
+    # LDAP module — 389/636/3268/3269 / name contains "ldap"
+    (LdapModule, "389", "tcp", "ldap", "", False, True),
+    (LdapModule, "636", "tcp", "ldapssl", "", False, True),
+    (LdapModule, "3268", "tcp", "globalcataLDAP", "", False, True),
+    (LdapModule, "3269", "tcp", "globalcataLDAP", "", False, True),
+    (LdapModule, "80", "tcp", "http", "", False, False),
+
+    # Kerberos module — port 88 / name "kerberos"
+    (KerberosModule, "88", "tcp", "kerberos", "", False, True),
+    (KerberosModule, "88", "udp", "kerberos", "", False, True),
+    (KerberosModule, "80", "tcp", "http", "", False, False),
+
+    # WinRM module — 5985/5986 / name "wsman"
+    (WinrmModule, "5985", "tcp", "wsman", "", False, True),
+    (WinrmModule, "5986", "tcp", "wsman", "", False, True),
+    (WinrmModule, "80", "tcp", "http", "", False, False),
+
+    # RDP module — port 3389 / name "ms-wbt-server"
+    (RdpModule, "3389", "tcp", "ms-wbt-server", "", False, True),
+    (RdpModule, "80", "tcp", "http", "", False, False),
 ]
 
 
@@ -437,6 +467,156 @@ def test_ipmi_match_no_longer_includes_port_49152(port):
     nmap reports it as http). IpmiModule.match() should not claim it."""
     p = port(portid="49152", protocol="tcp", name="http")
     assert IpmiModule().match(p) is False
+
+
+# ── FTP Module ──────────────────────────────────────────────────────────────
+
+def test_ftp_jobs_builds_nmap_nse_cmd(config, port):
+    """FTP module fires nmap with ftp-anon + ftp-syst NSE scripts."""
+    p = port(portid="21", protocol="tcp", name="ftp")
+    jobs = FtpModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/nmap"
+    # NSE scripts are passed as a single comma-separated string after --script
+    script_arg = job.cmd[job.cmd.index("--script") + 1]
+    assert "ftp-anon" in script_arg
+    assert "ftp-syst" in script_arg
+    assert "-p" in job.cmd and "21" in job.cmd
+    assert HOST in job.cmd
+    assert job.category == "misc"
+    assert "ftp" in job.output_file
+
+
+def test_ftp_jobs_no_nmap_returns_empty(config, port):
+    config.tool_paths.pop("nmap")
+    p = port(portid="21", name="ftp")
+    assert FtpModule().jobs(HOST, p, config) == []
+
+
+# ── LDAP Module ─────────────────────────────────────────────────────────────
+
+def test_ldap_jobs_builds_windapsearch_cmds(config, port):
+    """LDAP module fires windapsearch twice: users + groups (anonymous bind)."""
+    p = port(portid="389", protocol="tcp", name="ldap")
+    jobs = LdapModule().jobs(HOST, p, config)
+    assert len(jobs) == 2
+    descs = " ".join(j.description for j in jobs)
+    assert "users" in descs
+    assert "groups" in descs
+    assert all(j.cmd[0] == "/fake/windapsearch" for j in jobs)
+    assert all("-d" in j.cmd and "" in j.cmd for j in jobs)  # empty domain = anonymous
+    assert all("--dc-ip" in j.cmd and HOST in j.cmd for j in jobs)
+    assert all(j.category == "misc" for j in jobs)
+
+
+def test_ldap_jobs_safe_duplicate_across_ports(config, port):
+    """Ports 389/636/3268/3269 produce identical jobs (same cmd, same output,
+    same description). This is a safe duplicate — windapsearch connects to the
+    host, not a port."""
+    p389 = port(portid="389", protocol="tcp", name="ldap")
+    p636 = port(portid="636", protocol="tcp", name="ldapssl")
+    jobs389 = LdapModule().jobs(HOST, p389, config)
+    jobs636 = LdapModule().jobs(HOST, p636, config)
+    # Same descriptions, same cmds, same output files
+    assert [j.description for j in jobs389] == [j.description for j in jobs636]
+    assert [j.cmd for j in jobs389] == [j.cmd for j in jobs636]
+    assert [j.output_file for j in jobs389] == [j.output_file for j in jobs636]
+
+
+def test_ldap_jobs_no_tool_returns_empty(config, port):
+    config.tool_paths.pop("windapsearch")
+    p = port(portid="389", name="ldap")
+    assert LdapModule().jobs(HOST, p, config) == []
+
+
+# ── Kerberos Module ─────────────────────────────────────────────────────────
+
+def test_kerberos_jobs_builds_kerbrute_and_getnpusers(monkeypatch, config, port):
+    """With a resolved domain, Kerberos fires kerbrute + GetNPUsers."""
+    monkeypatch.setattr("modules.kerberos._resolve_domain", lambda h, tcp: "corp.example.com")
+    p = port(portid="88", protocol="tcp", name="kerberos")
+    jobs = KerberosModule().jobs(HOST, p, config)
+    assert len(jobs) == 2
+    descs = " ".join(j.description for j in jobs)
+    assert "kerbrute" in descs
+    assert "GetNPUsers" in descs
+    assert all(j.host == HOST for j in jobs)
+    assert all(j.category == "misc" for j in jobs)
+    assert all("corp.example.com" in j.description for j in jobs)
+
+
+def test_kerberos_jobs_no_domain_returns_empty(monkeypatch, config, port):
+    """If PTR can't resolve a domain, skip kerbrute/GetNPUsers."""
+    monkeypatch.setattr("modules.kerberos._resolve_domain", lambda h, tcp: None)
+    p = port(portid="88", name="kerberos")
+    assert KerberosModule().jobs(HOST, p, config) == []
+
+
+def test_kerberos_jobs_kerbrute_missing_still_runs_getnpusers(monkeypatch, config, port):
+    """If kerbrute is missing but GetNPUsers is available, only fire GetNPUsers."""
+    monkeypatch.setattr("modules.kerberos._resolve_domain", lambda h, tcp: "corp.example.com")
+    config.tool_paths.pop("kerbrute")
+    p = port(portid="88", name="kerberos")
+    jobs = KerberosModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    assert "GetNPUsers" in jobs[0].description
+
+
+def test_kerberos_jobs_user_dict_missing_returns_empty(monkeypatch, config, port, tmp_path):
+    """Both kerbrute and GetNPUsers need a user list — skip if missing."""
+    monkeypatch.setattr("modules.kerberos._resolve_domain", lambda h, tcp: "corp.example.com")
+    config.user_dict = tmp_path / "nonexistent.txt"
+    p = port(portid="88", name="kerberos")
+    assert KerberosModule().jobs(HOST, p, config) == []
+
+
+# ── WinRM Module ────────────────────────────────────────────────────────────
+
+def test_winrm_jobs_http_scheme(config, port):
+    """Port 5985 → HTTP WinRM banner check."""
+    p = port(portid="5985", protocol="tcp", name="wsman")
+    jobs = WinrmModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/curl"
+    assert "http://10.10.10.5:5985/wsman" in job.cmd[-1]
+    assert "-I" in job.cmd  # headers only
+    assert job.category == "misc"
+
+
+def test_winrm_jobs_https_scheme(config, port):
+    """Port 5986 → HTTPS WinRM banner check."""
+    p = port(portid="5986", protocol="tcp", name="wsman")
+    jobs = WinrmModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    assert "https://10.10.10.5:5986/wsman" in jobs[0].cmd[-1]
+    assert "-k" in jobs[0].cmd  # skip TLS verify
+
+
+def test_winrm_jobs_no_curl_returns_empty(config, port):
+    config.tool_paths.pop("curl")
+    p = port(portid="5985", name="wsman")
+    assert WinrmModule().jobs(HOST, p, config) == []
+
+
+# ── RDP Module ──────────────────────────────────────────────────────────────
+
+def test_rdp_jobs_builds_rdp_sec_check_cmd(config, port):
+    p = port(portid="3389", protocol="tcp", name="ms-wbt-server")
+    jobs = RdpModule().jobs(HOST, p, config)
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.cmd[0] == "/fake/rdp-sec-check"
+    assert f"{HOST}:3389" in job.cmd[1]
+    assert job.category == "misc"
+    assert "rdp_sec_check" in job.output_file
+
+
+def test_rdp_jobs_no_tool_returns_empty(config, port):
+    config.tool_paths.pop("rdp-sec-check")
+    p = port(portid="3389", name="ms-wbt-server")
+    assert RdpModule().jobs(HOST, p, config) == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -79,6 +79,11 @@ def build_default_registry() -> ModuleRegistry:
     from modules.nfs import NfsModule
     from modules.ike import IkeModule
     from modules.ipmi import IpmiModule
+    from modules.ftp import FtpModule
+    from modules.ldap import LdapModule
+    from modules.kerberos import KerberosModule
+    from modules.winrm import WinrmModule
+    from modules.rdp import RdpModule
     # RMI module removed: nmap NSE rmi-vuln-classloader (already in nse_tcp)
     # covers the same ground without spawning msfconsole per host.
 
@@ -94,4 +99,10 @@ def build_default_registry() -> ModuleRegistry:
     registry.register(NfsModule())
     registry.register(IkeModule())
     registry.register(IpmiModule())
+    # Windows / AD coverage
+    registry.register(FtpModule())
+    registry.register(LdapModule())
+    registry.register(KerberosModule())
+    registry.register(WinrmModule())
+    registry.register(RdpModule())
     return registry

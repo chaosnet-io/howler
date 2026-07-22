@@ -97,13 +97,14 @@ def test_dispatch_aggregates_across_many_modules(config, port):
 def test_build_default_registry_includes_all_protocols():
     """The default registry should have a module for every protocol the
     config.yaml advertises scanning: ssl, http, dns, ssh, smb, smtp, snmp,
-    nfs, ike, ipmi. RMI is handled by nmap NSE rmi-vuln-classloader directly
-    (no module needed)."""
+    nfs, ike, ipmi, ftp, ldap, kerberos, winrm, rdp. RMI is handled by
+    nmap NSE rmi-vuln-classloader directly (no module needed)."""
     reg = build_default_registry()
     names = {type(m).__name__ for m in reg.all_modules()}
     expected = {
         "SslTlsModule", "HttpModule", "DnsModule", "SshModule", "SmbModule",
         "SmtpModule", "SnmpModule", "NfsModule", "IkeModule", "IpmiModule",
+        "FtpModule", "LdapModule", "KerberosModule", "WinrmModule", "RdpModule",
     }
     assert expected == names
 

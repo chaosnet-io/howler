@@ -120,9 +120,15 @@ Howler checks for each tool at startup and skips modules whose tools aren't foun
 | `smtp-user-enum` | smtp | MSF `smtp_enum` |
 | `onesixtyone` | snmp | MSF `snmp_login` |
 | `ipmitool` | ipmi | MSF `ipmi_version` + `ipmi_cipher_zero` |
+| `windapsearch` | ldap | — (new: anonymous bind user/group enum) |
+| `kerbrute` | kerberos | — (new: user enumeration via AS-REQ) |
+| `impacket-GetNPUsers` | kerberos | — (new: ASREPRoasting) |
+| `curl` | winrm | — (new: WinRM banner check) |
+| `rdp-sec-check` | rdp | — (new: RDP protocol/NLA downgrade checks) |
 | `dnsrecon` | dns | dnsrecon |
 | `ike-scan` | ike | ike-scan |
 | `showmount` | nfs | showmount |
+| `nmap` | ftp, tftp brute | — (new: standalone NSE for ftp-anon + tftp-enum) |
 
 **Note:** RMI is handled by the nmap NSE `rmi-vuln-classloader` script
 (already in `nse_tcp`); no separate module is needed. TFTP brute uses
@@ -133,8 +139,9 @@ cipher-zero detection.
 
 **Kali Linux quick install:**
 ```bash
-apt-get install python3-yaml python3-rich masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh onesixtyone ipmitool -y
-pip install ssh-audit --break-system-packages
+apt-get install python3-yaml python3-rich masscan nmap nikto whatweb wafw00f wpscan ike-scan nfs-common enum4linux-ng hydra smtp-user-enum dnsrecon testssl.sh onesixtyone ipmitool curl rdp-sec-check -y
+pip install ssh-audit impacket windapsearch --break-system-packages
+go install github.com/ropnop/kerbrute@latest
 go install github.com/sensepost/gowitness@latest
 go install github.com/ffuf/ffuf/v2@latest
 ```
@@ -241,7 +248,7 @@ features:
 │   └── gnmap/             nmap .gnmap grep files
 ├── http/                  web tool output (whatweb, wafw00f, ffuf, nikto, wpscan...)
 │   └── images/            gowitness screenshots
-├── misc/                  DNS, NFS, IKE, IPMI, SSH audit, SNMP, TFTP-enum
+├── misc/                  DNS, NFS, IKE, IPMI, SSH audit, SNMP, TFTP-enum, FTP, LDAP, Kerberos, WinRM, RDP
 │   └── ssl/               testssl.sh output
 ├── brute/                 hydra output
 ├── nmap.summary.txt       open ports and OS detection summary

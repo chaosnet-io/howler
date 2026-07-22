@@ -149,6 +149,15 @@ def test_descriptions_unique_per_module(config, port):
         port(portid="4500", protocol="udp", name="nat-t-ike"),
         port(portid="623", protocol="udp", name="rmcp"),
         port(portid="69", protocol="udp", name="tftp"),
+        # Windows / AD coverage
+        port(portid="21", protocol="tcp", name="ftp"),
+        port(portid="389", protocol="tcp", name="ldap"),
+        port(portid="636", protocol="tcp", name="ldapssl"),
+        port(portid="3268", protocol="tcp", name="globalcataLDAP"),
+        port(portid="88", protocol="tcp", name="kerberos"),
+        port(portid="5985", protocol="tcp", name="wsman"),
+        port(portid="5986", protocol="tcp", name="wsman"),
+        port(portid="3389", protocol="tcp", name="ms-wbt-server"),
     ]
 
     # Map description → set of (cmd, output_file, category) tuples.

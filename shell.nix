@@ -71,6 +71,13 @@ in pkgs.mkShell {
 
     # ── IPMI ─────────────────────────────────────────────────────────────
     ipmitool
+
+    # ── Windows / AD ─────────────────────────────────────────────────────
+    curl
+    # windapsearch — not in nixpkgs; pip install windapsearch or grab from GitHub
+    # kerbrute — not in nixpkgs; grab from GitHub releases
+    # impacket-GetNPUsers — pip install impacket
+    # rdp-sec-check — not in nixpkgs; grab from GitHub
   ];
 
   shellHook = ''
