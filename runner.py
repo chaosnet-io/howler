@@ -7,8 +7,8 @@ Resume semantics
 ----------------
 ``run_all`` accepts an optional ``resume_state`` mapping ``Job.description``
 to its prior ``status`` ("ok" | "failed" | "timeout") from a previous run's
-``findings.jsonl``. Only ``ok`` jobs are skipped; ``failed`` and ``timeout``
-jobs are re-run. ``findings.jsonl`` is written incrementally as each job
+``run_state.jsonl``. Only ``ok`` jobs are skipped; ``failed`` and ``timeout``
+jobs are re-run. ``run_state.jsonl`` is written incrementally as each job
 completes so a crash (or Ctrl-C) leaves a usable resume state on disk.
 """
 
@@ -37,7 +37,7 @@ def filter_completed_jobs(
 ) -> tuple[list[Job], int]:
     """Split ``jobs`` into those still to run vs. previously completed.
 
-    The resume key is ``Job.description`` — it's already in findings.jsonl
+    The resume key is ``Job.description`` — it's already in run_state.jsonl
     (so existing files work without a migration) and is unique per
     (tool, host, port, variant) across every built-in module.
 
@@ -58,7 +58,7 @@ def filter_completed_jobs(
 
 
 def _result_to_entry(r: ScanResult) -> dict:
-    """Serialise a ScanResult to the JSONL record written to findings.jsonl."""
+    """Serialise a ScanResult to the JSONL record written to run_state.jsonl."""
     if r.timed_out:
         status = "timeout"
     elif r.returncode == 0:
@@ -88,13 +88,13 @@ class AsyncJobRunner:
         jobs: list[Job],
         label: str = "Scanning",
         resume_state: Optional[dict[str, str]] = None,
-        findings_path: str = "findings.jsonl",
+        findings_path: str = "run_state.jsonl",
     ) -> list[ScanResult]:
         """Run all jobs concurrently, bounded by config.concurrent_tasks.
 
         If ``resume_state`` is non-empty, jobs whose description maps to
         ``"ok"`` are skipped (their output files are assumed still on disk).
-        ``findings.jsonl`` is opened in append mode and one record is written
+        ``run_state.jsonl`` is opened in append mode and one record is written
         per completed job — so a SIGKILL mid-run leaves a usable state.
         """
         if not jobs:
@@ -135,7 +135,7 @@ class AsyncJobRunner:
                 async def _run_and_record(idx: int, job: Job) -> None:
                     result = await self._run_one(job, sem)
                     results[idx] = result
-                    # Append to findings.jsonl immediately so a crash leaves
+                    # Append to run_state.jsonl immediately so a crash leaves
                     # a usable resume state. Serialised by write_lock.
                     async with write_lock:
                         findings_file.write(

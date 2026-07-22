@@ -2,7 +2,7 @@
 Tests for the resume subsystem.
 
 Resume lets users re-run an interrupted scan without redoing jobs that
-already completed successfully. The state file is findings.jsonl, written
+already completed successfully. The state file is run_state.jsonl, written
 incrementally by the runner (one line per completed job). On --resume, the
 runner skips any job whose description maps to status="ok" in the prior state.
 
@@ -203,9 +203,9 @@ def test_descriptions_unique_per_module(config, port):
 
 # ── load_resume_state ───────────────────────────────────────────────────────
 
-def test_load_resume_state_reads_findings_jsonl(tmp_path, monkeypatch):
-    """load_resume_state returns {description: status} from findings.jsonl."""
-    findings = tmp_path / "findings.jsonl"
+def test_load_resume_state_reads_run_state_jsonl(tmp_path, monkeypatch):
+    """load_resume_state returns {description: status} from run_state.jsonl."""
+    findings = tmp_path / "run_state.jsonl"
     findings.write_text(
         json.dumps({"description": "nmap TCP 1.1.1.1", "status": "ok"}) + "\n"
         + json.dumps({"description": "testssl.sh 1.1.1.1:443", "status": "failed"}) + "\n"
@@ -229,7 +229,7 @@ def test_load_resume_state_missing_file_returns_empty(tmp_path, monkeypatch):
 
 def test_load_resume_state_skips_malformed_lines(tmp_path, monkeypatch):
     """Malformed JSON lines must be skipped, not crash the load."""
-    findings = tmp_path / "findings.jsonl"
+    findings = tmp_path / "run_state.jsonl"
     findings.write_text(
         json.dumps({"description": "good", "status": "ok"}) + "\n"
         + "not valid json at all\n"
@@ -244,7 +244,7 @@ def test_load_resume_state_skips_malformed_lines(tmp_path, monkeypatch):
 
 def test_load_resume_state_skips_entries_without_description(tmp_path, monkeypatch):
     """Entries missing description or status are ignored — can't resume-key them."""
-    findings = tmp_path / "findings.jsonl"
+    findings = tmp_path / "run_state.jsonl"
     findings.write_text(
         json.dumps({"status": "ok"}) + "\n"
         + json.dumps({"description": "no status"}) + "\n"
@@ -257,9 +257,9 @@ def test_load_resume_state_skips_entries_without_description(tmp_path, monkeypat
 
 
 def test_load_resume_state_last_entry_wins(tmp_path, monkeypatch):
-    """If findings.jsonl has duplicate descriptions (shouldn't happen in normal
+    """If run_state.jsonl has duplicate descriptions (shouldn't happen in normal
     use, but defensive), the last entry wins — consistent with append semantics."""
-    findings = tmp_path / "findings.jsonl"
+    findings = tmp_path / "run_state.jsonl"
     findings.write_text(
         json.dumps({"description": "job", "status": "failed"}) + "\n"
         + json.dumps({"description": "job", "status": "ok"}) + "\n"
@@ -272,7 +272,7 @@ def test_load_resume_state_last_entry_wins(tmp_path, monkeypatch):
 # ── reset_findings_for_fresh_run ────────────────────────────────────────────
 
 def test_reset_findings_removes_existing_file(tmp_path, monkeypatch):
-    findings = tmp_path / "findings.jsonl"
+    findings = tmp_path / "run_state.jsonl"
     findings.write_text("stale data\n")
     import howler
     monkeypatch.setattr(howler, "FINDINGS_PATH", findings)
@@ -281,7 +281,7 @@ def test_reset_findings_removes_existing_file(tmp_path, monkeypatch):
 
 
 def test_reset_findings_no_op_when_missing(tmp_path, monkeypatch):
-    """Removing a non-existent findings.jsonl must not raise."""
+    """Removing a non-existent run_state.jsonl must not raise."""
     import howler
     monkeypatch.setattr(howler, "FINDINGS_PATH", tmp_path / "nonexistent.jsonl")
     howler.reset_findings_for_fresh_run()  # should not raise

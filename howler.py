@@ -119,7 +119,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--disable-resolve", action="store_true",
                         help="skip hostname resolution pass")
     parser.add_argument("--resume", action="store_true",
-                        help="skip jobs previously marked 'ok' in findings.jsonl; "
+                        help="skip jobs previously marked 'ok' in run_state.jsonl; "
                              "re-runs failed/timeout jobs. combine with -sP to "
                              "also skip masscan+nmap")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -200,15 +200,15 @@ def resolve_hostnames(hosts: dict[str, HostScan]) -> None:
 
 # ── Resume state ──────────────────────────────────────────────────────────
 
-FINDINGS_PATH = Path("findings.jsonl")
+FINDINGS_PATH = Path("run_state.jsonl")
 
 
 def load_resume_state() -> dict[str, str]:
-    """Read findings.jsonl and return {job_description: status}.
+    """Read run_state.jsonl and return {job_description: status}.
 
     Used by --resume to skip previously-completed jobs. Only entries with
     status "ok" are kept by filter_completed_jobs; the rest are re-run.
-    Returns {} if findings.jsonl is missing or unreadable.
+    Returns {} if run_state.jsonl is missing or unreadable.
     """
     state: dict[str, str] = {}
     if not FINDINGS_PATH.exists():
@@ -228,14 +228,14 @@ def load_resume_state() -> dict[str, str]:
                 if desc and status:
                     state[desc] = status
     except OSError as e:
-        logging.warning(f"could not read {FINDINGS_PATH} for resume: {e}")
+        logging.warning(f"could not read {FINDINGS_PATH} (run_state.jsonl) for resume: {e}")
     return state
 
 
 def reset_findings_for_fresh_run() -> None:
-    """Truncate findings.jsonl so a fresh run starts with an empty state.
+    """Truncate run_state.jsonl so a fresh run starts with an empty state.
 
-    Without --resume, leftover findings.jsonl from a previous run would mix
+    Without --resume, leftover run_state.jsonl from a previous run would mix
     with the new run's incremental writes. Truncate to keep things clean.
     """
     if FINDINGS_PATH.exists():
@@ -281,14 +281,14 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
     runner = AsyncJobRunner(config, console)
 
     # Resume state: {job_description: status}. Empty unless --resume was given
-    # and a usable findings.jsonl exists. The runner skips any job whose
+    # and a usable run_state.jsonl exists. The runner skips any job whose
     # description maps to "ok" and re-runs everything else.
     resume_state: dict[str, str] = {}
     if args.resume:
         resume_state = load_resume_state()
         if not resume_state:
             console.print(
-                "[yellow]--resume given but no usable findings.jsonl found; "
+                "[yellow]--resume given but no usable run_state.jsonl found; "
                 "running fresh[/yellow]"
             )
         else:

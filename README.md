@@ -33,7 +33,7 @@ Howler preserves the battle-tested pipeline from nightcall (masscan discovery �
 - **Graceful degradation** — missing tools are detected at startup and skipped with a warning. The scan continues with whatever is available.
 - **Modern tool stack** — replaces several abandoned/outdated tools with actively maintained equivalents.
 - **Rich output** — real progress bars and colour-coded console output via [Rich](https://github.com/Textualize/rich).
-- **JSONL findings** — structured `findings.jsonl` written alongside the usual raw text files.
+- **JSONL findings** — structured `run_state.jsonl` written alongside the usual raw text files.
 
 ---
 
@@ -46,17 +46,17 @@ Howler preserves the battle-tested pipeline from nightcall (masscan discovery �
 4. XML import (parse nmap output into structured host/port data)
 5. Follow-up scans (service-specific tools dispatched per open port)
 6. Bruteforcing (optional, --brute flag — hydra; TFTP uses nmap NSE tftp-enum)
-7. Summarize (grep-based summaries + findings.jsonl)
+7. Summarize (grep-based summaries + run_state.jsonl)
 8. Organize (sort output files into categorised subdirectories)
 ```
 
 ### Resuming interrupted scans
 
-Howler writes `findings.jsonl` incrementally as each job completes — one
+Howler writes `run_state.jsonl` incrementally as each job completes — one
 record per job with a `status` field (`ok` | `failed` | `timeout`).
 
 `--resume` skips any job whose description maps to `status == "ok"` in an
-existing `findings.jsonl`. Failed and timed-out jobs are re-run. Combine
+existing `run_state.jsonl`. Failed and timed-out jobs are re-run. Combine
 with `-sP` to also skip masscan+nmap (using the existing XML in `xml/`):
 
 ```bash
@@ -67,7 +67,7 @@ sudo python3 howler.py --resume 10.10.10.5
 sudo python3 howler.py -sP --resume -f targets.txt
 ```
 
-Without `--resume`, a fresh run truncates `findings.jsonl` so old state
+Without `--resume`, a fresh run truncates `run_state.jsonl` so old state
 can't leak into the new run.
 
 ---
@@ -185,7 +185,7 @@ single_address         single IP or CIDR (e.g. 10.0.0.1 or 10.0.0.0/24)
 -b,  --brute           enable credential bruteforcing (mind lockout policies)
 -w,  --web             enable extended web scans (ffuf, nikto, CMS scanners)
      --disable-resolve skip reverse hostname resolution
-     --resume          skip jobs previously marked 'ok' in findings.jsonl;
+     --resume          skip jobs previously marked 'ok' in run_state.jsonl;
                        re-runs failed/timeout jobs. combine with -sP to also
                        skip masscan+nmap
      --config PATH      path to config YAML (default: config.yaml)
@@ -250,7 +250,7 @@ tools:
 
 features:
   randomize_jobs: false    # randomize job order to spread load across hosts
-  jsonl_output: true       # write findings.jsonl
+  jsonl_output: true       # write run_state.jsonl
 ```
 
 ---
@@ -270,7 +270,7 @@ features:
 ├── nmap.summary.txt       open ports and OS detection summary
 ├── http.summary.txt       whatweb summaries
 ├── brute.summary.txt      successful credentials
-├── findings.jsonl         structured findings (one JSON object per completed job)
+├── run_state.jsonl         structured findings (one JSON object per completed job)
 ├── hostnames.txt          IP → hostname mappings
 └── Howler_YYYY-Mon-DD_*.log  full debug log
 ```
@@ -329,7 +329,7 @@ That's it. Howler will automatically check for `mytool` at startup and dispatch 
 | Progress | Fake tqdm time estimate | Rich live progress |
 | Missing tools | Hard crash | Startup warning, graceful skip |
 | Data model | Raw dicts | Typed dataclasses |
-| Output | Raw files only | Raw files + `findings.jsonl` |
+| Output | Raw files only | Raw files + `run_state.jsonl` |
 | Python | 3.6+ | 3.10+ |
 
 ---
