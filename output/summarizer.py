@@ -1,7 +1,11 @@
 """
 Results summarizer.
-Runs grep-based summaries (same as original nightcall) and optionally
-writes a JSONL findings file from ScanResult objects.
+Runs grep-based summaries (same as original nightcall) and reports a tally
+of jobs that did not complete successfully by reading findings.jsonl.
+
+The runner now writes findings.jsonl incrementally as each job completes —
+this module no longer owns that file. It just runs the grep summaries and
+prints a warning count derived from the on-disk state.
 """
 
 from __future__ import annotations
@@ -15,6 +19,8 @@ from typing import Optional
 from models import ScanResult
 
 log = logging.getLogger(__name__)
+
+_FINDINGS_PATH = Path("findings.jsonl")
 
 _GREP_SUMMARIES = [
     # (command, output_file)
@@ -46,56 +52,52 @@ _GREP_SUMMARIES = [
 
 
 def run(results: Optional[list[ScanResult]] = None, jsonl_output: bool = True) -> None:
-    """
-    Run grep-based summaries, then write JSONL findings if enabled.
+    """Run grep-based summaries, then warn about non-ok jobs.
+
+    ``results`` and ``jsonl_output`` are accepted for backward compatibility
+    but no longer drive the JSONL write — the runner owns findings.jsonl now.
+    The warning tally is read from findings.jsonl on disk so it reflects every
+    job in the current scan, including ones skipped via --resume.
     """
     log.info("Summarizing results...")
 
     for cmd, _ in _GREP_SUMMARIES:
         subprocess.run(cmd, shell=True)
 
-    if jsonl_output and results:
-        _write_jsonl(results)
+    _warn_failed_jobs()
 
 
-def _write_jsonl(results: list[ScanResult]) -> None:
+def _warn_failed_jobs() -> None:
+    """Tally non-ok jobs from findings.jsonl and log a warning if any.
+
+    Silently no-ops if findings.jsonl is absent (e.g. user deleted it).
     """
-    Write one JSON object per ScanResult to findings.jsonl.
+    if not _FINDINGS_PATH.exists():
+        return
 
-    Every job is recorded — including failures — with an explicit ``status``
-    ("ok" | "failed" | "timeout") so a non-zero run can't be mistaken for a
-    completed one. A console warning tallies anything that didn't succeed.
-    """
-    path = Path("findings.jsonl")
-    count = 0
+    total = 0
     failed = 0
-    with open(path, "w") as f:
-        for r in results:
-            if r.timed_out:
-                status = "timeout"
-            elif r.returncode == 0:
-                status = "ok"
-            else:
-                status = "failed"
-            if status != "ok":
-                failed += 1
-            entry = {
-                "host": r.job.host,
-                "category": r.job.category,
-                "tool": r.job.cmd[0] if r.job.cmd else "",
-                "description": r.job.description,
-                "output_file": r.job.output_file,
-                "returncode": r.returncode,
-                "status": status,
-                "duration": round(r.duration, 2),
-                "timed_out": r.timed_out,
-            }
-            f.write(json.dumps(entry) + "\n")
-            count += 1
-    log.info(f"Wrote {count} findings to {path}")
+    try:
+        with open(_FINDINGS_PATH) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                total += 1
+                if entry.get("status") != "ok":
+                    failed += 1
+    except OSError as e:
+        log.debug(f"could not read findings.jsonl for failure tally: {e}")
+        return
+
+    log.info(f"findings.jsonl contains {total} entries")
     if failed:
         log.warning(
-            f"{failed} of {count} jobs did not complete successfully "
-            f"(non-zero exit or timeout). Inspect 'status' in {path} before "
-            f"trusting coverage."
+            f"{failed} of {total} jobs did not complete successfully "
+            f"(non-zero exit or timeout). Inspect 'status' in "
+            f"{_FINDINGS_PATH} before trusting coverage."
         )

@@ -12,6 +12,7 @@
 #   dnsrecon ike-scan showmount msfconsole
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -118,6 +119,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
                         help="enable extended web scans (ffuf, nikto, CMS scanners)")
     parser.add_argument("--disable-resolve", action="store_true",
                         help="skip hostname resolution pass")
+    parser.add_argument("--resume", action="store_true",
+                        help="skip jobs previously marked 'ok' in findings.jsonl; "
+                             "re-runs failed/timeout jobs. combine with -sP to "
+                             "also skip masscan+nmap")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
 
     args = parser.parse_args(argv)
@@ -194,6 +199,53 @@ def resolve_hostnames(hosts: dict[str, HostScan]) -> None:
     logging.info(f"Resolved {resolved} hostname(s)")
 
 
+# ── Resume state ──────────────────────────────────────────────────────────
+
+FINDINGS_PATH = Path("findings.jsonl")
+
+
+def load_resume_state() -> dict[str, str]:
+    """Read findings.jsonl and return {job_description: status}.
+
+    Used by --resume to skip previously-completed jobs. Only entries with
+    status "ok" are kept by filter_completed_jobs; the rest are re-run.
+    Returns {} if findings.jsonl is missing or unreadable.
+    """
+    state: dict[str, str] = {}
+    if not FINDINGS_PATH.exists():
+        return state
+    try:
+        with open(FINDINGS_PATH) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                desc = entry.get("description")
+                status = entry.get("status")
+                if desc and status:
+                    state[desc] = status
+    except OSError as e:
+        logging.warning(f"could not read {FINDINGS_PATH} for resume: {e}")
+    return state
+
+
+def reset_findings_for_fresh_run() -> None:
+    """Truncate findings.jsonl so a fresh run starts with an empty state.
+
+    Without --resume, leftover findings.jsonl from a previous run would mix
+    with the new run's incremental writes. Truncate to keep things clean.
+    """
+    if FINDINGS_PATH.exists():
+        try:
+            FINDINGS_PATH.unlink()
+        except OSError as e:
+            logging.warning(f"could not remove {FINDINGS_PATH}: {e}")
+
+
 # ── Tool availability check ───────────────────────────────────────────────
 
 def check_all_tools(registry: ModuleRegistry) -> None:
@@ -229,6 +281,26 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
 
     runner = AsyncJobRunner(config, console)
 
+    # Resume state: {job_description: status}. Empty unless --resume was given
+    # and a usable findings.jsonl exists. The runner skips any job whose
+    # description maps to "ok" and re-runs everything else.
+    resume_state: dict[str, str] = {}
+    if args.resume:
+        resume_state = load_resume_state()
+        if not resume_state:
+            console.print(
+                "[yellow]--resume given but no usable findings.jsonl found; "
+                "running fresh[/yellow]"
+            )
+        else:
+            ok_count = sum(1 for s in resume_state.values() if s == "ok")
+            console.print(
+                f"[dim]Resume: {ok_count} previously-completed job(s) may be "
+                f"skipped across phases[/dim]"
+            )
+    else:
+        reset_findings_for_fresh_run()
+
     # 1. Import hosts
     hosts = import_hosts(args.target_file, args.single_address)
 
@@ -263,7 +335,9 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
             nmap_jobs.append(portscan.udp_scan_job(host, args.iface, config))
 
         console.print(f"\t[bold][ Initiating host enumeration ({len(nmap_jobs)} jobs) ][/bold]")
-        nmap_results = await runner.run_all(nmap_jobs, label="Nmap scanning")
+        nmap_results = await runner.run_all(
+            nmap_jobs, label="Nmap scanning", resume_state=resume_state
+        )
         all_results.extend(nmap_results)
         organizer.post_nmap_cleanup()
     else:
@@ -295,7 +369,9 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
 
     if followup_jobs:
         console.print(f"\t[bold][ Initiating follow-up scans ({len(followup_jobs)} jobs) ][/bold]")
-        followup_results = await runner.run_all(followup_jobs, label="Follow-up scanning")
+        followup_results = await runner.run_all(
+            followup_jobs, label="Follow-up scanning", resume_state=resume_state
+        )
         all_results.extend(followup_results)
 
     # 5. Bruteforcing
@@ -308,7 +384,9 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
                 brute_jobs.extend(brute_module.jobs(host_addr, port, config))
 
         if brute_jobs:
-            brute_results = await runner.run_all(brute_jobs, label="Bruteforcing")
+            brute_results = await runner.run_all(
+                brute_jobs, label="Bruteforcing", resume_state=resume_state
+            )
             all_results.extend(brute_results)
 
     # 6. Summarize and organize

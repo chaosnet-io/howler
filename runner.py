@@ -2,11 +2,20 @@
 Async job runner for Howler.
 Uses asyncio.Semaphore for concurrency control and
 asyncio.create_subprocess_exec (no shell=True) for process spawning.
+
+Resume semantics
+----------------
+``run_all`` accepts an optional ``resume_state`` mapping ``Job.description``
+to its prior ``status`` ("ok" | "failed" | "timeout") from a previous run's
+``findings.jsonl``. Only ``ok`` jobs are skipped; ``failed`` and ``timeout``
+jobs are re-run. ``findings.jsonl`` is written incrementally as each job
+completes so a crash (or Ctrl-C) leaves a usable resume state on disk.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import time
@@ -22,15 +31,85 @@ from models import Job, ScanResult
 log = logging.getLogger(__name__)
 
 
+def filter_completed_jobs(
+    jobs: list[Job],
+    resume_state: dict[str, str],
+) -> tuple[list[Job], int]:
+    """Split ``jobs`` into those still to run vs. previously completed.
+
+    The resume key is ``Job.description`` — it's already in findings.jsonl
+    (so existing files work without a migration) and is unique per
+    (tool, host, port, variant) across every built-in module.
+
+    Only ``status == "ok"`` causes a skip. ``failed`` and ``timeout`` entries
+    are dropped by the caller before they reach us, so any non-"ok" entry here
+    means the prior run was interrupted mid-job — re-run it.
+
+    Returns ``(kept_jobs, skipped_count)``.
+    """
+    kept: list[Job] = []
+    skipped = 0
+    for job in jobs:
+        if resume_state.get(job.description) == "ok":
+            skipped += 1
+        else:
+            kept.append(job)
+    return kept, skipped
+
+
+def _result_to_entry(r: ScanResult) -> dict:
+    """Serialise a ScanResult to the JSONL record written to findings.jsonl."""
+    if r.timed_out:
+        status = "timeout"
+    elif r.returncode == 0:
+        status = "ok"
+    else:
+        status = "failed"
+    return {
+        "host": r.job.host,
+        "category": r.job.category,
+        "tool": r.job.cmd[0] if r.job.cmd else "",
+        "description": r.job.description,
+        "output_file": r.job.output_file,
+        "returncode": r.returncode,
+        "status": status,
+        "duration": round(r.duration, 2),
+        "timed_out": r.timed_out,
+    }
+
+
 class AsyncJobRunner:
     def __init__(self, config: Config, console: Console) -> None:
         self.config = config
         self.console = console
 
-    async def run_all(self, jobs: list[Job], label: str = "Scanning") -> list[ScanResult]:
-        """Run all jobs concurrently, bounded by config.concurrent_tasks."""
+    async def run_all(
+        self,
+        jobs: list[Job],
+        label: str = "Scanning",
+        resume_state: Optional[dict[str, str]] = None,
+        findings_path: str = "findings.jsonl",
+    ) -> list[ScanResult]:
+        """Run all jobs concurrently, bounded by config.concurrent_tasks.
+
+        If ``resume_state`` is non-empty, jobs whose description maps to
+        ``"ok"`` are skipped (their output files are assumed still on disk).
+        ``findings.jsonl`` is opened in append mode and one record is written
+        per completed job — so a SIGKILL mid-run leaves a usable state.
+        """
         if not jobs:
             return []
+
+        if resume_state:
+            jobs, skipped = filter_completed_jobs(jobs, resume_state)
+            if skipped:
+                self.console.print(
+                    f"[dim]Resume: skipping {skipped} previously completed "
+                    f"job(s) for this phase[/dim]"
+                )
+            if not jobs:
+                self.console.print("[dim]Resume: nothing left to do for this phase[/dim]")
+                return []
 
         if self.config.randomize_jobs:
             jobs = list(jobs)
@@ -38,25 +117,37 @@ class AsyncJobRunner:
 
         sem = asyncio.Semaphore(self.config.concurrent_tasks)
         results: list[Optional[ScanResult]] = [None] * len(jobs)
+        write_lock = asyncio.Lock()
+        findings_file = open(findings_path, "a", encoding="utf-8")
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn(f"[bold]{label}[/bold] {{task.description}}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-            transient=True,
-        ) as progress:
-            task_id = progress.add_task("", total=len(jobs))
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn(f"[bold]{label}[/bold] {{task.description}}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+                console=self.console,
+                transient=True,
+            ) as progress:
+                task_id = progress.add_task("", total=len(jobs))
 
-            async def _run_and_record(idx: int, job: Job) -> None:
-                result = await self._run_one(job, sem)
-                results[idx] = result
-                progress.advance(task_id)
-                progress.update(task_id, description=f"[dim]{job.host}[/dim]")
+                async def _run_and_record(idx: int, job: Job) -> None:
+                    result = await self._run_one(job, sem)
+                    results[idx] = result
+                    # Append to findings.jsonl immediately so a crash leaves
+                    # a usable resume state. Serialised by write_lock.
+                    async with write_lock:
+                        findings_file.write(
+                            json.dumps(_result_to_entry(result)) + "\n"
+                        )
+                        findings_file.flush()
+                    progress.advance(task_id)
+                    progress.update(task_id, description=f"[dim]{job.host}[/dim]")
 
-            await asyncio.gather(*[_run_and_record(i, j) for i, j in enumerate(jobs)])
+                await asyncio.gather(*[_run_and_record(i, j) for i, j in enumerate(jobs)])
+        finally:
+            findings_file.close()
 
         return [r for r in results if r is not None]
 

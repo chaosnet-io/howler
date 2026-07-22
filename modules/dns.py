@@ -26,9 +26,14 @@ class DnsModule(BaseModule):
         tool = config.tool("dnsrecon")
         if not tool:
             return []
-
         jobs: list[Job] = []
+
         tcp = port.protocol == "tcp"
+        # Include port_key in descriptions so 53/tcp and 53/udp (which produce
+        # different cmds — the tcp version adds --tcp) have distinct resume
+        # keys. Without this, --resume would incorrectly skip the udp variant
+        # after the tcp variant succeeded.
+        key = f"{port.portid}/{port.protocol}"
 
         # Reverse DNS sweep of /24
         rdns_cmd = [tool, "-n", host, "-r", f"{host}/24"]
@@ -39,7 +44,7 @@ class DnsModule(BaseModule):
             output_file=f"{host}.misc.rdns",
             category="misc",
             host=host,
-            description=f"dnsrecon reverse {host}/24",
+            description=f"dnsrecon reverse {host}/24 ({key})",
         ))
 
         # Forward DNS — resolve domain via PTR then run zone transfer attempt
@@ -53,7 +58,7 @@ class DnsModule(BaseModule):
                 output_file=f"{host}.misc.dns",
                 category="misc",
                 host=host,
-                description=f"dnsrecon forward {host} ({domain})",
+                description=f"dnsrecon forward {host} ({domain}) ({key})",
             ))
 
         return jobs

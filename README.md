@@ -50,6 +50,26 @@ Howler preserves the battle-tested pipeline from nightcall (masscan discovery �
 8. Organize (sort output files into categorised subdirectories)
 ```
 
+### Resuming interrupted scans
+
+Howler writes `findings.jsonl` incrementally as each job completes — one
+record per job with a `status` field (`ok` | `failed` | `timeout`).
+
+`--resume` skips any job whose description maps to `status == "ok"` in an
+existing `findings.jsonl`. Failed and timed-out jobs are re-run. Combine
+with `-sP` to also skip masscan+nmap (using the existing XML in `xml/`):
+
+```bash
+# A scan got interrupted — resume without redoing completed work
+sudo python3 howler.py --resume 10.10.10.5
+
+# Or, if nmap already finished and only follow-ups were interrupted:
+sudo python3 howler.py -sP --resume -f targets.txt
+```
+
+Without `--resume`, a fresh run truncates `findings.jsonl` so old state
+can't leak into the new run.
+
 ---
 
 ## Requirements
@@ -134,6 +154,9 @@ single_address         single IP or CIDR (e.g. 10.0.0.1 or 10.0.0.0/24)
 -b,  --brute           enable credential bruteforcing (mind lockout policies)
 -w,  --web             enable extended web scans (ffuf, nikto, CMS scanners)
      --disable-resolve skip reverse hostname resolution
+     --resume          skip jobs previously marked 'ok' in findings.jsonl;
+                       re-runs failed/timeout jobs. combine with -sP to also
+                       skip masscan+nmap
      --config PATH      path to config YAML (default: config.yaml)
      --cleanup          re-sort output directory and exit
      --install-prereqs  install pyyaml and rich via pip
@@ -156,6 +179,9 @@ sudo python3 howler.py --config /etc/howler/config.yaml 10.0.0.1
 
 # Re-sort a partially organized output directory
 sudo python3 howler.py --cleanup
+
+# Resume an interrupted scan (skips completed follow-up jobs)
+sudo python3 howler.py -sP --resume -f targets.txt
 ```
 
 ---
