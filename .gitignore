@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Howler runtime output (scans, logs, findings)
+*.log
+*.nmap
+*.gnmap
+*.xml
+masscan.bin
+live_hosts.txt
+hostnames.txt
+findings.jsonl
+*.summary.txt
+xml/
+nmap/
+http/
+msf/
+misc/
+brute/
+output/
