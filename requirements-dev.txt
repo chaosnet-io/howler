@@ -1,5 +1,6 @@
-# Test-only dependencies. Install with:
+# Dev/test dependencies. Install with:
 #   python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 pytest>=7.0
 pyyaml>=6.0
 rich>=13.0
+textual>=0.80.0

@@ -21,6 +21,7 @@ let
   pythonEnv = pkgs.python3.withPackages (ps: with ps; [
     pyyaml
     rich
+    textual
   ]);
 
 in pkgs.mkShell {
