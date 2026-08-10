@@ -11,6 +11,13 @@
 #   testssl.sh enum4linux-ng hydra ssh-audit smtp-user-enum
 #   dnsrecon ike-scan showmount msfconsole
 
+# PEP 563: keep all annotations as strings so they are never evaluated at
+# import time. Critical here because HostScan/Job (used in annotations below)
+# are imported inside the deferred try/except; without this, a missing
+# 'rich'/'pyyaml' would raise NameError at module load and mask the friendly
+# _fail_missing_dep message.
+from __future__ import annotations
+
 import argparse
 import json
 import subprocess
