@@ -123,6 +123,19 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
                         help="enable credential bruteforcing (mind lockout policies)")
     parser.add_argument("-w", "--web", action="store_true",
                         help="enable extended web scans (ffuf, nikto, CMS scanners)")
+    parser.add_argument("-x", "--external", action="store_true",
+                        help="external / internet-facing target profile: lower masscan "
+                             "rate, relaxed RTT for internet latency, no OS detection, "
+                             "UDP deep-enum skipped, DoS-risk NSE scripts dropped "
+                             "(intrusive vuln/exploit checks and http-put file-write kept)")
+    parser.add_argument("--exclude-file", type=Path,
+                        help="file of out-of-scope IPs/CIDRs (one per line) to exclude "
+                             "from masscan and nmap — enforces engagement scope")
+    parser.add_argument("--assume-up", action="store_true",
+                        help="skip masscan discovery and nmap every target directly "
+                             "(nmap -Pn treats hosts as up). For known in-scope IP "
+                             "lists where a firewall silently drops masscan's probes. "
+                             "Pairs well with -x")
     parser.add_argument("--disable-resolve", action="store_true",
                         help="skip hostname resolution pass")
     parser.add_argument("--resume", action="store_true",
@@ -285,6 +298,16 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
     registry = build_default_registry()
     check_all_tools(registry)
 
+    if config.enable_external:
+        console.print(
+            "[bold cyan][ External profile active ][/bold cyan] "
+            f"[dim](masscan {config.masscan_rate}pps, rtt "
+            f"{config.nmap_max_rtt_timeout}, curated attack-surface ports, "
+            f"no OS detection, UDP deep-enum off, DoS-risk scripts dropped)[/dim]"
+        )
+    if config.exclude_file:
+        console.print(f"[dim]Scope: excluding targets in {config.exclude_file}[/dim]")
+
     runner = AsyncJobRunner(config, console)
 
     # Resume state: {job_description: status}. Empty unless --resume was given
@@ -313,32 +336,56 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
     all_results = []
 
     # 2. Host discovery and port scanning
-    if not args.skip_portscans:
-        live_ips = await run_discovery(
-            targets=list(hosts.keys()),
-            iface=args.iface,
-            config=config,
-            console=console,
-        )
+    if args.skip_portscans:
+        if args.assume_up:
+            console.print("[yellow]--assume-up ignored: -sP skips nmap entirely[/yellow]")
+        expand_cidrs(hosts)
+        config.large_test = len(hosts) > config.nmap_large_host_threshold
+        console.print("Skipping host enumeration — importing existing XML...\n")
+    else:
+        if args.assume_up:
+            # Skip masscan discovery; treat every provided target as up and let
+            # nmap (-Pn) probe it directly. For known in-scope IP lists where a
+            # firewall silently drops masscan's SYN/ICMP but services still answer.
+            expand_cidrs(hosts)
+            console.print(
+                f"\t[bold][ Assuming {len(hosts)} target(s) up — skipping masscan "
+                f"discovery ][/bold]\n"
+            )
+            if len(hosts) > 1024:
+                console.print(
+                    "[yellow]--assume-up nmaps every address in scope; masscan "
+                    "discovery is usually faster for large ranges[/yellow]"
+                )
+        else:
+            live_ips = await run_discovery(
+                targets=list(hosts.keys()),
+                iface=args.iface,
+                config=config,
+                console=console,
+            )
 
-        if not live_ips:
-            console.print("[bold red]No live hosts discovered. Exiting.[/bold red]")
-            sys.exit(0)
+            if not live_ips:
+                console.print("[bold red]No live hosts discovered. Exiting.[/bold red]")
+                sys.exit(0)
 
-        # Rebuild hosts dict from discovered IPs only
-        hosts = {ip: HostScan(address=ip) for ip in live_ips}
+            # Rebuild hosts dict from discovered IPs only
+            hosts = {ip: HostScan(address=ip) for ip in live_ips}
 
         if not args.disable_resolve:
             resolve_hostnames(hosts)
 
-        # Adaptive port depth: full-port for small target sets
+        # Adaptive port depth: full-port for small target sets. The external
+        # profile overrides this with its curated set via config.nmap_tcp_ports.
         config.large_test = len(hosts) > config.nmap_large_host_threshold
         full_port = not config.large_test
 
         nmap_jobs: list[Job] = []
         for host in hosts:
             nmap_jobs.append(portscan.tcp_scan_job(host, args.iface, full_port, config))
-            nmap_jobs.append(portscan.udp_scan_job(host, args.iface, config))
+            # External profile skips the slow, lossy UDP deep-enum over the internet.
+            if config.scan_udp:
+                nmap_jobs.append(portscan.udp_scan_job(host, args.iface, config))
 
         console.print(f"\t[bold][ Initiating host enumeration ({len(nmap_jobs)} jobs) ][/bold]")
         nmap_results = await runner.run_all(
@@ -346,10 +393,6 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
         )
         all_results.extend(nmap_results)
         organizer.post_nmap_cleanup()
-    else:
-        expand_cidrs(hosts)
-        config.large_test = len(hosts) > config.nmap_large_host_threshold
-        console.print("Skipping host enumeration — importing existing XML...\n")
 
     # 3. Import nmap XML
     xml_dir = Path("xml")
@@ -519,6 +562,20 @@ if __name__ == "__main__":
     config = load_config(args.config if hasattr(args, "config") else None)
     config.enable_brute = args.brute
     config.enable_web = args.web
+    config.enable_external = args.external
+
+    if args.exclude_file is not None:
+        if not args.exclude_file.exists():
+            console.print(
+                f"[bold red]--exclude-file not found: {args.exclude_file}[/bold red]"
+            )
+            sys.exit(1)
+        config.exclude_file = str(args.exclude_file)
+
+    # External profile layers its overrides on top of the loaded config; do this
+    # after load_config so config.yaml values are the base it tunes from.
+    if config.enable_external:
+        config.apply_external_profile()
 
     init_logging(config)
     logging.debug(f"Arguments: {args}")

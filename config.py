@@ -69,6 +69,52 @@ except ImportError:
     _YAML_AVAILABLE = False
 
 
+# ── External profile tuning ──────────────────────────────────────────────────
+# Values the --external flag layers over the internal-LAN defaults. Kept as
+# module constants (not config keys) because --external is a code-level profile,
+# not a data-driven one — see Config.apply_external_profile().
+
+# masscan packets/sec cap for internet-facing targets. 2000 pps (the internal
+# default) trips IDS/IPS and upstream rate-limits, and can get the source
+# address null-routed. Lower is stealthier and a better netizen.
+EXTERNAL_MASSCAN_RATE = 300
+
+# nmap --max-rtt-timeout for internet latency. 300ms suits a LAN but silently
+# drops ports on higher-latency paths (false negatives).
+EXTERNAL_MAX_RTT_TIMEOUT = "1250ms"
+
+# NSE scripts dropped in external mode. Policy: this is an authorised pentest
+# tool, so intrusive vuln/exploit checks and the http-put file-write are KEPT;
+# only scripts with a documented denial-of-service / target-crash risk are
+# removed. smb-vuln-ms17-010 can crash the target host (see nmap script docs).
+EXTERNAL_DOS_SCRIPTS = frozenset({"smb-vuln-ms17-010"})
+
+# Curated external attack-surface port set. External scanning wants the ports
+# realistically exposed to the internet — plus the internal-only services (SMB,
+# RDP, databases, IPMI, X11) that are CRITICAL findings *if* exposed — not the
+# LAN chatter (mDNS, LLMNR, NetBIOS broadcast, vendor-appliance high ports) that
+# pads the internal default. Applied by apply_external_profile() to both masscan
+# (discovery) and nmap (enumeration), so external scans stay fast and focused
+# instead of doing a full -p- sweep at internet latency.
+EXTERNAL_TCP_PORTS = (
+    "21,22,23,25,53,80,81,88,110,111,135,139,143,389,443,445,465,587,636,873,"
+    "990,993,995,1080,1194,1433,1521,1723,2049,2082,2083,2375,2376,3000,3268,"
+    "3269,3306,3389,4443,5000,5432,5601,5900,5984,5985,5986,6000,6001,6379,6443,"
+    "7001,8000,8008,8009,8080,8081,8086,8443,8888,9000,9092,9200,9300,9443,"
+    "10000,11211,27017"
+)
+EXTERNAL_UDP_PORTS = "53,69,111,123,137,161,500,623,1434,1900,4500,5060"
+EXTERNAL_MASSCAN_PORTS = EXTERNAL_TCP_PORTS + "," + ",".join(
+    f"U:{p}" for p in EXTERNAL_UDP_PORTS.split(",")
+)
+
+
+def _filter_nse(script_csv: str, drop: "frozenset[str]") -> str:
+    """Return a comma-separated NSE list with ``drop`` names removed."""
+    kept = [s.strip() for s in script_csv.split(",") if s.strip() and s.strip() not in drop]
+    return ",".join(kept)
+
+
 @dataclass
 class Config:
     # Concurrency
@@ -122,6 +168,17 @@ class Config:
         "53,67-69,80,88,111,123,135,137-139,161,389,445,500,514,520,623,"
         "1033,1433,1434,1900,2049,4500,5060,5353,49152"
     )
+    # When set (external profile), nmap scans exactly this TCP port set instead
+    # of the full-port / top-1000 heuristic. None = internal adaptive behaviour.
+    nmap_tcp_ports: Optional[str] = None
+    # --script-args passed to the nmap TCP scan. Sourced from config.yaml's
+    # nmap.nse_args block (previously hardcoded in scanner/portscan.py).
+    nse_args: dict[str, Any] = field(default_factory=lambda: {
+        "http_put_url": "/",
+        "http_put_file": "/etc/timezone",
+        "cmd": "whoami",
+        "httpspider_maxpagecount": 100,
+    })
 
     # Wordlists
     user_dict: Path = field(default_factory=lambda: Path("/usr/share/ncrack/minimal.usr"))
@@ -137,7 +194,17 @@ class Config:
     randomize_jobs: bool = False
     enable_brute: bool = False
     enable_web: bool = False
+    enable_external: bool = False
     jsonl_output: bool = True
+
+    # Scan-shape toggles. Default to the internal-LAN profile; the external
+    # profile (apply_external_profile) turns these off.
+    os_detect: bool = True   # nmap -O
+    scan_udp: bool = True    # generate nmap UDP deep-enum jobs
+
+    # Scope control: file of out-of-scope IPs/CIDRs excluded from masscan
+    # (--excludefile) and nmap (--excludefile). None = no exclusions.
+    exclude_file: Optional[str] = None
 
     # Runtime state (set during pipeline, not from config)
     large_test: bool = False
@@ -178,6 +245,58 @@ class Config:
                         return candidate
                 break
         return None
+
+    def nse_script_args(self) -> str:
+        """Build the nmap ``--script-args`` string from ``self.nse_args``.
+
+        Was hardcoded in scanner/portscan.py; now sourced from config so the
+        http-put file-write target, command, and spider depth are tunable.
+        Only keys that are set contribute, so blanking one in config.yaml
+        drops the corresponding script arg.
+        """
+        a = self.nse_args
+        parts: list[str] = []
+        if a.get("http_put_url"):
+            parts.append(f'http-put.url="{a["http_put_url"]}"')
+        if a.get("http_put_file"):
+            parts.append(f'http-put.file="{a["http_put_file"]}"')
+        if a.get("cmd"):
+            parts.append(f'cmd="{a["cmd"]}"')
+        if a.get("httpspider_maxpagecount") is not None:
+            parts.append(f'httpspider.maxpagecount={a["httpspider_maxpagecount"]}')
+        return ",".join(parts)
+
+    def apply_external_profile(self) -> None:
+        """Retune the internal-LAN defaults for internet-facing targets.
+
+        Applied when ``--external`` is given. Relative to the internal profile:
+
+          * masscan rate is capped low — 2000 pps trips IDS/IPS and upstream
+            rate-limits over the internet and risks the source being
+            null-routed. (``min`` so a lower rate already set in config wins.)
+          * ``--max-rtt-timeout`` is relaxed for internet latency: 300ms drops
+            ports on higher-latency paths (false negatives).
+          * OS detection (``-O``) is disabled — unreliable through firewalls,
+            slow, and noisy.
+          * Deep UDP enumeration is skipped (the pipeline honours ``scan_udp``):
+            UDP scanning across the internet is slow and lossy.
+          * DoS / crash-risk NSE scripts are dropped. Intrusive vuln/exploit
+            scripts and the http-put file-write are KEPT — this is an
+            authorised penetration-testing tool.
+        """
+        self.masscan_rate = min(self.masscan_rate, EXTERNAL_MASSCAN_RATE)
+        self.nmap_max_rtt_timeout = EXTERNAL_MAX_RTT_TIMEOUT
+        self.os_detect = False
+        self.scan_udp = False
+        self.nmap_nse_tcp = _filter_nse(self.nmap_nse_tcp, EXTERNAL_DOS_SCRIPTS)
+        self.nmap_nse_udp = _filter_nse(self.nmap_nse_udp, EXTERNAL_DOS_SCRIPTS)
+        # Focus discovery + enumeration on the external attack surface. Only swap
+        # masscan's port list if it's still the untouched internal default — an
+        # explicit masscan.ports in config.yaml wins (mirrors the rate min() rule).
+        # nmap always uses the curated TCP set in external mode.
+        if self.masscan_ports == Config.__dataclass_fields__["masscan_ports"].default:
+            self.masscan_ports = EXTERNAL_MASSCAN_PORTS
+        self.nmap_tcp_ports = EXTERNAL_TCP_PORTS
 
 
 def load_config(path: Optional[Path] = None) -> Config:
@@ -228,6 +347,9 @@ def load_config(path: Optional[Path] = None) -> Config:
         config.nmap_nse_udp = nmap["nse_udp"]
     if "udp_ports" in nmap:
         config.nmap_udp_ports = nmap["udp_ports"]
+    if "nse_args" in nmap and isinstance(nmap["nse_args"], dict):
+        # Merge over defaults so a partial nse_args block keeps the rest.
+        config.nse_args = {**config.nse_args, **nmap["nse_args"]}
 
     wl = data.get("wordlists", {})
     if "user_dict" in wl:

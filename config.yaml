@@ -17,6 +17,9 @@ nmap:
   nse_tcp: "ajp-headers,amqp-info,banner,cassandra-info,dns-zone-transfer,ftp-anon,ftp-syst,http-apache-server-status,http-backup-finder,http-config-backup,http-devframework,http-method-tamper,http-methods,http-open-proxy,http-passwd,http-robots.txt,http-shellshock,http-sitemap-generator,http-title,http-vuln-cve2017-5638,http-vuln-cve2017-5689,http-webdav-scan,imap-capabilities,iscsi-info,jdwp-info,ldap-rootdse,ldap-search,mongodb-databases,mongodb-info,mqtt-subscribe,ms-sql-info,mysql-empty-password,mysql-info,nfs-showmount,pop3-capabilities,redis-info,rmi-vuln-classloader,rsync-list-modules,sip-methods,smb-enum-domains,smb-enum-shares,smb-enum-users,smb-os-discovery,smb-vuln-ms17-010,smtp-commands,ssl-heartbleed,ssl-known-key,supermicro-ipmi-conf,tls-ticketbleed,unusual-port,x11-access"
   nse_udp: "banner,dns-nsid,dns-recursion,dns-service-discovery,ipmi-cipher-zero,ipmi-version,ms-sql-info,nbstat,nfs-showmount,ntp-info,sip-methods,smb-enum-domains,smb-enum-shares,smb-enum-users,smb-os-discovery,snmp-sysdescr,snmp-win32-shares,snmp-win32-software,snmp-win32-users,unusual-port,upnp-info"
   udp_ports: "53,67-69,80,88,111,123,135,137-139,161,389,445,500,514,520,623,1033,1433,1434,1900,2049,4500,5060,5353,49152"
+  # nmap --script-args for the TCP scan. http_put_file is the file written to
+  # the target by the http-put NSE script (a licit pentest write-test). Kept in
+  # external mode; blank any key to drop that script arg.
   nse_args:
     http_put_url: "/"
     http_put_file: "/etc/timezone"

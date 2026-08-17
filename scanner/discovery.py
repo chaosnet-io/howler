@@ -112,6 +112,8 @@ def _build_masscan_cmd(
         "--banners",
         "-oB", "masscan.bin",
     ]
+    if config.exclude_file:
+        cmd.extend(["--excludefile", config.exclude_file])
     if iface:
         cmd.extend(["-e", iface])
     return cmd
