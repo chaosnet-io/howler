@@ -70,6 +70,43 @@ sudo python3 howler.py -sP --resume -f targets.txt
 Without `--resume`, a fresh run truncates `run_state.jsonl` so old state
 can't leak into the new run.
 
+### External / internet-facing targets
+
+Every default is tuned for a fast internal LAN. The `-x` / `--external` flag
+retunes the pipeline for internet-facing targets:
+
+- **Lower masscan rate** (2000 → 300 pps) — 2000 pps trips IDS/IPS and upstream
+  rate-limits and risks the source address being null-routed.
+- **Relaxed nmap RTT** (`--max-rtt-timeout` 300ms → 1250ms) — the LAN-tuned
+  300ms silently drops ports on higher-latency internet paths.
+- **No OS detection** (`-O`) — unreliable through firewalls, slow, and noisy.
+- **UDP deep-enum skipped** — UDP scanning across the internet is slow and lossy
+  (masscan still probes UDP during discovery; only the nmap UDP follow-up drops).
+- **Curated attack-surface ports** — masscan discovery and nmap enumeration both
+  use a focused external port set (web, mail, VPN, SSH/RDP/WinRM, DNS, and the
+  databases/SMB/IPMI/X11 that are critical findings *if* exposed) instead of a
+  full `-p-` sweep at internet latency. An explicit `masscan.ports` you set in
+  `config.yaml` is still honoured.
+- **DoS / crash-risk NSE scripts dropped** (e.g. `smb-vuln-ms17-010`). Intrusive
+  vuln/exploit checks and the `http-put` file-write are **kept** — this is an
+  authorised penetration-testing tool.
+
+The external profile layers over `config.yaml`, so a stealthier rate, custom NSE
+set, or explicit port list you've configured is still respected (the rate is
+only ever lowered).
+
+**Discovery bypass:** masscan gates which hosts nmap sees — a host it finds no
+open port on is never enumerated. On external targets a firewall may silently
+drop masscan's probes while services still answer nmap's more thorough `-Pn`
+scan. For a known in-scope IP list, `--assume-up` skips masscan entirely and
+nmaps every target directly. (On a large range, masscan discovery is usually
+faster — it prunes dead space before nmap spends time on it.)
+
+**Scope control:** `--exclude-file` passes an out-of-scope IP/CIDR list to both
+masscan (`--excludefile`) and nmap (`--excludefile`), so neighbours sharing a
+CIDR (shared hosting, upstream infra) are never touched. It works with or
+without `-x`.
+
 ---
 
 ## Requirements
@@ -184,6 +221,12 @@ single_address         single IP or CIDR (e.g. 10.0.0.1 or 10.0.0.0/24)
 -i,  --iface           network interface for masscan and nmap
 -b,  --brute           enable credential bruteforcing (mind lockout policies)
 -w,  --web             enable extended web scans (ffuf, nikto, CMS scanners)
+-x,  --external        external / internet-facing target profile (see below)
+     --exclude-file P   file of out-of-scope IPs/CIDRs to exclude from
+                        masscan and nmap (enforces engagement scope)
+     --assume-up        skip masscan discovery; nmap every target directly
+                        (for known in-scope IP lists behind silent-drop
+                        firewalls). pairs well with -x
      --disable-resolve skip reverse hostname resolution
      --resume          skip jobs previously marked 'ok' in run_state.jsonl;
                        re-runs failed/timeout jobs. combine with -sP to also
@@ -204,6 +247,12 @@ sudo python3 howler.py -sP -w -f targets.txt
 
 # Full scan with bruteforcing and extended web checks
 sudo python3 howler.py -b -w 192.168.1.0/24
+
+# External / internet-facing engagement, honouring a scope exclusion list
+sudo python3 howler.py -x --exclude-file out-of-scope.txt -f in-scope.txt
+
+# External scan of a known in-scope IP list behind a silent-drop firewall
+sudo python3 howler.py -x --assume-up -f in-scope.txt
 
 # Use a custom config
 sudo python3 howler.py --config /etc/howler/config.yaml 10.0.0.1

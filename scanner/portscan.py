@@ -18,15 +18,16 @@ def tcp_scan_job(host: str, iface: Optional[str], full_port: bool, config: Confi
     """Build a nmap TCP scan Job for a single host."""
     nmap_bin = config.tool("nmap") or "nmap"
 
-    nse_args = (
-        f'http-put.url="/",http-put.file="/etc/timezone",'
-        f'cmd="whoami",httpspider.maxpagecount=100'
-    )
+    nse_args = config.nse_script_args()
 
     cmd = [
         nmap_bin,
-        "-v0", "-n", "-Pn", "-O", "-sSV",
-        *([ "-p-"] if full_port else ["--top-ports", "1000"]),
+        "-v0", "-n", "-Pn", "-sSV",
+        *(["-O"] if config.os_detect else []),
+        *(
+            ["-p", config.nmap_tcp_ports] if config.nmap_tcp_ports
+            else (["-p-"] if full_port else ["--top-ports", "1000"])
+        ),
         "--script", config.nmap_nse_tcp,
         "--script-args", nse_args,
         "--version-intensity", str(config.nmap_version_intensity),
@@ -34,6 +35,7 @@ def tcp_scan_job(host: str, iface: Optional[str], full_port: bool, config: Confi
         "--max-rtt-timeout", config.nmap_max_rtt_timeout,
         "--max-scan-delay", config.nmap_max_scan_delay,
         "--host-timeout", f"{config.task_timeout // 60}m",
+        *(["--excludefile", config.exclude_file] if config.exclude_file else []),
         "--open",
         "-oA", f"{host}.tcp",
         *([ "-e", iface] if iface else []),
@@ -55,7 +57,8 @@ def udp_scan_job(host: str, iface: Optional[str], config: Config) -> Job:
 
     cmd = [
         nmap_bin,
-        "-v0", "-n", "-Pn", "-O", "-sUV",
+        "-v0", "-n", "-Pn", "-sUV",
+        *(["-O"] if config.os_detect else []),
         "-p", config.nmap_udp_ports,
         "--script", config.nmap_nse_udp,
         "--version-intensity", str(config.nmap_version_intensity),
@@ -63,6 +66,7 @@ def udp_scan_job(host: str, iface: Optional[str], config: Config) -> Job:
         "--max-rtt-timeout", config.nmap_max_rtt_timeout,
         "--max-scan-delay", config.nmap_max_scan_delay,
         "--host-timeout", f"{config.task_timeout // 60}m",
+        *(["--excludefile", config.exclude_file] if config.exclude_file else []),
         "--open",
         "-oA", f"{host}.udp",
         *([ "-e", iface] if iface else []),

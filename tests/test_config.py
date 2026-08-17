@@ -34,8 +34,13 @@ def test_load_config_no_yaml_returns_defaults():
     assert c.nmap_version_intensity == 5
     assert c.enable_brute is False
     assert c.enable_web is False
+    assert c.enable_external is False
     assert c.jsonl_output is True
     assert c.log_level == "INFO"
+    # Internal-LAN scan shape is the default.
+    assert c.os_detect is True
+    assert c.scan_udp is True
+    assert c.exclude_file is None
 
 
 def test_load_config_applies_concurrency_overrides(tmp_path):
@@ -134,6 +139,24 @@ tools:
     c = load_config(cfg)
     assert "nmap" not in c.tool_paths  # null → not registered
     assert c.tool_paths["hydra"] == "/usr/bin/hydra"
+
+
+def test_load_config_applies_nse_args(tmp_path):
+    """nmap.nse_args was historically ignored (hardcoded in portscan.py).
+    It must now round-trip into config.nse_args, merged over defaults."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("""
+nmap:
+  nse_args:
+    http_put_file: /tmp/marker
+    cmd: id
+""")
+    c = load_config(cfg)
+    assert c.nse_args["http_put_file"] == "/tmp/marker"
+    assert c.nse_args["cmd"] == "id"
+    # Unset keys keep their defaults (partial override).
+    assert c.nse_args["http_put_url"] == "/"
+    assert c.nse_args["httpspider_maxpagecount"] == 100
 
 
 def test_load_config_applies_feature_flags(tmp_path):
@@ -247,3 +270,100 @@ def test_resolve_wordlist_explicit_env_var(tmp_path):
         else:
             os.environ.pop("HOWLER_SECLISTS", None)
     assert result == target
+
+
+# ── nse_script_args ─────────────────────────────────────────────────────────
+
+def test_nse_script_args_default_matches_legacy_hardcoded_string():
+    """The string must equal what portscan.py hardcoded before nse_args was
+    wired up, so external behaviour is byte-for-byte unchanged."""
+    c = Config()
+    assert c.nse_script_args() == (
+        'http-put.url="/",http-put.file="/etc/timezone",'
+        'cmd="whoami",httpspider.maxpagecount=100'
+    )
+
+
+def test_nse_script_args_blank_key_drops_that_arg():
+    c = Config()
+    c.nse_args = {**c.nse_args, "http_put_file": ""}
+    args = c.nse_script_args()
+    assert "http-put.file" not in args
+    # Other args still present.
+    assert 'cmd="whoami"' in args
+
+
+# ── apply_external_profile ──────────────────────────────────────────────────
+
+def test_external_profile_lowers_rate_and_relaxes_rtt():
+    c = Config()
+    c.apply_external_profile()
+    assert c.masscan_rate == 300
+    assert c.nmap_max_rtt_timeout == "1250ms"
+
+
+def test_external_profile_rate_cap_does_not_raise_a_lower_configured_rate():
+    """min() semantics: a stealthier rate already in config must be kept."""
+    c = Config()
+    c.masscan_rate = 100
+    c.apply_external_profile()
+    assert c.masscan_rate == 100
+
+
+def test_external_profile_disables_os_detect_and_udp():
+    c = Config()
+    c.apply_external_profile()
+    assert c.os_detect is False
+    assert c.scan_udp is False
+
+
+def test_external_profile_drops_dos_scripts_keeps_exploits():
+    c = Config()
+    assert "smb-vuln-ms17-010" in c.nmap_nse_tcp  # present by default
+    c.apply_external_profile()
+    # DoS / crash-risk script dropped …
+    assert "smb-vuln-ms17-010" not in c.nmap_nse_tcp
+    # … but intrusive vuln/exploit checks are kept (authorised pentest tool).
+    assert "http-shellshock" in c.nmap_nse_tcp
+    assert "ssl-heartbleed" in c.nmap_nse_tcp
+    # … and the http-put file-write survives.
+    assert "/etc/timezone" in c.nse_script_args()
+
+
+def test_external_profile_filter_leaves_no_empty_entries():
+    """Dropping a script must not leave a stray comma / empty token."""
+    c = Config()
+    c.apply_external_profile()
+    assert ",," not in c.nmap_nse_tcp
+    assert not c.nmap_nse_tcp.startswith(",")
+    assert not c.nmap_nse_tcp.endswith(",")
+
+
+def test_external_profile_swaps_to_curated_ports():
+    from config import EXTERNAL_MASSCAN_PORTS, EXTERNAL_TCP_PORTS
+    c = Config()
+    assert c.nmap_tcp_ports is None  # internal: adaptive full/top-ports
+    c.apply_external_profile()
+    assert c.masscan_ports == EXTERNAL_MASSCAN_PORTS
+    assert c.nmap_tcp_ports == EXTERNAL_TCP_PORTS
+
+
+def test_external_profile_respects_explicit_masscan_ports_override():
+    """An explicit masscan.ports from config must survive --external; only the
+    untouched internal default is swapped for the curated set."""
+    from config import EXTERNAL_MASSCAN_PORTS, EXTERNAL_TCP_PORTS
+    c = Config()
+    c.masscan_ports = "1-1000"  # simulate a config.yaml override
+    c.apply_external_profile()
+    assert c.masscan_ports == "1-1000"
+    # nmap still uses the curated set regardless.
+    assert c.nmap_tcp_ports == EXTERNAL_TCP_PORTS
+    assert c.masscan_ports != EXTERNAL_MASSCAN_PORTS
+
+
+def test_external_tcp_ports_are_unique_and_numeric():
+    """Guard against a copy-paste dup or stray token in the curated list."""
+    from config import EXTERNAL_TCP_PORTS
+    ports = EXTERNAL_TCP_PORTS.split(",")
+    assert len(ports) == len(set(ports)), "duplicate port in EXTERNAL_TCP_PORTS"
+    assert all(p.isdigit() for p in ports)
