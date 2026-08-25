@@ -7,6 +7,7 @@ TFTP brute previously used MSF tftpbrute; replaced with nmap NSE tftp-enum
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -66,7 +67,7 @@ def _hydra_brute(host: str, port: PortInfo, config: Config) -> list[Job]:
             host,
             port.name,
         ],
-        output_file=f"{host}.{port.name}.brute",
+        output_file=f"{netutil.safe_filename(host)}.{port.name}.brute",
         category="brute",
         host=host,
         description=f"hydra {port.name} {host}:{port.portid}",
@@ -89,9 +90,10 @@ def _tftp_enum(host: str, port: PortInfo, config: Config) -> list[Job]:
             "-sU", "-p", "69",
             "--script", "tftp-enum",
             "-n", "-Pn",
+            *(["-6"] if netutil.is_ipv6(host) else []),
             host,
         ],
-        output_file=f"{host}-{port.portid}.misc.tftp_enum",
+        output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.tftp_enum",
         category="misc",
         host=host,
         description=f"nmap tftp-enum {host}:{port.portid}",

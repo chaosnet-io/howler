@@ -12,6 +12,7 @@ lockout risk) and catches misconfigurations hydra wouldn't.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -36,7 +37,7 @@ class MysqlModule(BaseModule):
                 "-N", "-B",
                 "-e", "SELECT VERSION();",
             ],
-            output_file=f"{host}-{port.portid}.misc.mysql",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.mysql",
             category="misc",
             host=host,
             description=f"mysql version probe {host}:{port.portid}",

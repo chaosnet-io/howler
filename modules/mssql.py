@@ -11,6 +11,7 @@ Separate from brute (--brute flag) because the null probe is always safe
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -31,9 +32,9 @@ class MssqlModule(BaseModule):
                 tool,
                 "-no-pass",
                 "-port", port.portid,
-                f"''@{host}",
+                f"''@{netutil.bracket(host)}",
             ],
-            output_file=f"{host}-{port.portid}.misc.mssql",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.mssql",
             category="misc",
             host=host,
             description=f"impacket-mssqlclient null probe {host}:{port.portid}",

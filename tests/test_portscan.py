@@ -105,3 +105,32 @@ def test_masscan_cmd_includes_excludefile_and_rate():
     cmd = _build_masscan_cmd("masscan", ["10.0.0.0/24"], None, c)
     assert cmd[cmd.index("--excludefile") + 1] == "/tmp/scope.txt"
     assert cmd[cmd.index("--rate") + 1] == "300"
+
+
+# ── IPv6 job shaping ─────────────────────────────────────────────────────────
+
+def test_tcp_job_ipv6_adds_dash_6_and_sanitizes_output():
+    c = Config()
+    job = portscan.tcp_scan_job("2001:db8::5", None, True, c)
+    assert "-6" in job.cmd
+    # Output base is sanitized; the target host argument stays raw.
+    assert job.cmd[job.cmd.index("-oA") + 1] == "2001_db8__5.tcp"
+    assert job.output_file == "2001_db8__5.tcp.xml"
+    assert job.host == "2001:db8::5"
+    assert "2001:db8::5" in job.cmd
+
+
+def test_udp_job_ipv6_adds_dash_6_and_sanitizes_output():
+    c = Config()
+    job = portscan.udp_scan_job("2001:db8::5", None, c)
+    assert "-6" in job.cmd
+    assert job.cmd[job.cmd.index("-oA") + 1] == "2001_db8__5.udp"
+    assert job.output_file == "2001_db8__5.udp.xml"
+
+
+def test_tcp_job_ipv4_unchanged_no_dash_6():
+    c = Config()
+    job = portscan.tcp_scan_job("10.0.0.1", None, True, c)
+    assert "-6" not in job.cmd
+    assert job.cmd[job.cmd.index("-oA") + 1] == "10.0.0.1.tcp"
+    assert job.output_file == "10.0.0.1.tcp.xml"

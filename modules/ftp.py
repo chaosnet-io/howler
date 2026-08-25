@@ -13,6 +13,7 @@ when portscans are skipped (-sP) and gives a dedicated output file.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -34,9 +35,10 @@ class FtpModule(BaseModule):
                 "-p", "21",
                 "--script", "ftp-anon,ftp-syst",
                 "-n", "-Pn",
+                *(["-6"] if netutil.is_ipv6(host) else []),
                 host,
             ],
-            output_file=f"{host}-{port.portid}.misc.ftp",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.ftp",
             category="misc",
             host=host,
             description=f"nmap ftp-anon,ftp-syst {host}:{port.portid}",

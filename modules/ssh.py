@@ -6,6 +6,7 @@ ssh-audit covers the broader SSH attack surface (algorithms, host keys, ciphers,
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -23,7 +24,7 @@ class SshModule(BaseModule):
             return []
         return [Job(
             cmd=[tool, "-p", port.portid, host],
-            output_file=f"{host}-{port.portid}.misc.ssh_audit",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.ssh_audit",
             category="misc",
             host=host,
             description=f"ssh-audit {host}:{port.portid}",

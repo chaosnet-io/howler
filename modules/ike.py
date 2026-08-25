@@ -4,6 +4,7 @@ IKE/IPSec module — probes IKEv1/IKEv2 and NAT-T variants via ike-scan.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -26,14 +27,14 @@ class IkeModule(BaseModule):
         if nat_t:
             jobs.append(Job(
                 cmd=[tool, "-A", "-M", "-P", "-n", "esttest", "--nat-t", host],
-                output_file=f"{host}.misc.nat-ike",
+                output_file=f"{netutil.safe_filename(host)}.misc.nat-ike",
                 category="misc",
                 host=host,
                 description=f"ike-scan NAT-T IKEv1 {host}",
             ))
             jobs.append(Job(
                 cmd=[tool, "-2", "-M", "--nat-t", host],
-                output_file=f"{host}.misc.nat-ike",
+                output_file=f"{netutil.safe_filename(host)}.misc.nat-ike",
                 category="misc",
                 host=host,
                 description=f"ike-scan NAT-T IKEv2 {host}",
@@ -41,14 +42,14 @@ class IkeModule(BaseModule):
         else:
             jobs.append(Job(
                 cmd=[tool, "-A", "-M", "-P", "-n", "esttest", host],
-                output_file=f"{host}.misc.ike",
+                output_file=f"{netutil.safe_filename(host)}.misc.ike",
                 category="misc",
                 host=host,
                 description=f"ike-scan IKEv1 {host}",
             ))
             jobs.append(Job(
                 cmd=[tool, "-2", "-M", host],
-                output_file=f"{host}.misc.ike",
+                output_file=f"{netutil.safe_filename(host)}.misc.ike",
                 category="misc",
                 host=host,
                 description=f"ike-scan IKEv2 {host}",

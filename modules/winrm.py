@@ -9,6 +9,7 @@ check to confirm WinRM is exposed.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -30,9 +31,9 @@ class WinrmModule(BaseModule):
                 tool,
                 "-s", "-k", "-I",
                 "--connect-timeout", "10",
-                f"{scheme}://{host}:{port.portid}/wsman",
+                f"{scheme}://{netutil.bracket(host)}:{port.portid}/wsman",
             ],
-            output_file=f"{host}-{port.portid}.misc.winrm",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.winrm",
             category="misc",
             host=host,
             description=f"curl WinRM banner {host}:{port.portid}",

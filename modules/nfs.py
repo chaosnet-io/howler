@@ -4,6 +4,7 @@ NFS module — enumerates NFS exports via showmount.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -21,7 +22,7 @@ class NfsModule(BaseModule):
             return []
         return [Job(
             cmd=[tool, "-e", host],
-            output_file=f"{host}.misc.nfs",
+            output_file=f"{netutil.safe_filename(host)}.misc.nfs",
             category="misc",
             host=host,
             description=f"showmount -e {host}",

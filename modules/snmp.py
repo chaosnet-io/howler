@@ -6,6 +6,7 @@ single-purpose Kali-packaged tool that's much faster to spawn than msfconsole).
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -27,7 +28,7 @@ class SnmpModule(BaseModule):
                 "-c", str(config.snmp_dict),
                 host,
             ],
-            output_file=f"{host}-{port.portid}.misc.snmp",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.snmp",
             category="misc",
             host=host,
             description=f"onesixtyone {host}:{port.portid}",

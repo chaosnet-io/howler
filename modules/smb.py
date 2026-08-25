@@ -6,6 +6,7 @@ enum4linux-ng outputs JSON natively with -oA flag.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -22,8 +23,8 @@ class SmbModule(BaseModule):
         if not tool:
             return []
         return [Job(
-            cmd=[tool, "-A", host, "-oA", f"smb-{host}"],
-            output_file=f"smb-{host}.misc.enum",
+            cmd=[tool, "-A", host, "-oA", f"smb-{netutil.safe_filename(host)}"],
+            output_file=f"smb-{netutil.safe_filename(host)}.misc.enum",
             category="misc",
             host=host,
             description=f"enum4linux-ng {host}",

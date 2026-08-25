@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -53,7 +54,7 @@ class KerberosModule(BaseModule):
                     "-d", domain,
                     str(config.user_dict),
                 ],
-                output_file=f"{host}-{port.portid}.misc.kerbrute",
+                output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.kerbrute",
                 category="misc",
                 host=host,
                 description=f"kerbrute userenum {host} ({domain})",
@@ -68,7 +69,7 @@ class KerberosModule(BaseModule):
                     "-usersfile", str(config.user_dict),
                     f"{domain}/",
                 ],
-                output_file=f"{host}-{port.portid}.misc.asreproast",
+                output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.asreproast",
                 category="misc",
                 host=host,
                 description=f"GetNPUsers {host} ({domain})",

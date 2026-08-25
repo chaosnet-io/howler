@@ -864,3 +864,79 @@ def test_brute_match_returns_true_even_when_disabled(port):
     """
     p = port(portid="22", name="ssh")
     assert BruteModule().match(p) is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# IPv6 formatting — bracketed URLs/host:port and sanitized filenames
+# ═══════════════════════════════════════════════════════════════════════════
+
+HOST6 = "2001:db8::5"
+
+
+def test_http_jobs_ipv6_brackets_url(config, port):
+    p = port(portid="443", ssl=True, name="https")
+    jobs = HttpModule().jobs(HOST6, p, config)
+    whatweb = next(j for j in jobs if "whatweb" in j.description)
+    assert "https://[2001:db8::5]:443" in whatweb.cmd[-1]
+
+
+def test_http_jobs_ipv6_sanitizes_filename(config, port):
+    p = port(portid="443", ssl=True, name="https")
+    jobs = HttpModule().jobs(HOST6, p, config)
+    whatweb = next(j for j in jobs if "whatweb" in j.description)
+    assert whatweb.output_file == "2001_db8__5-443.https.whatweb"
+    assert ":" not in whatweb.output_file
+
+
+def test_http_jobs_ipv6_nikto_brackets_hostport(config, port):
+    config.enable_web = True
+    p = port(portid="80", name="http")
+    jobs = HttpModule().jobs(HOST6, p, config)
+    nikto = next(j for j in jobs if "nikto" in j.description)
+    assert nikto.cmd[nikto.cmd.index("-h") + 1] == "[2001:db8::5]:80"
+
+
+def test_winrm_jobs_ipv6_brackets_url(config, port):
+    p = port(portid="5985", name="wsman")
+    jobs = WinrmModule().jobs(HOST6, p, config)
+    assert "http://[2001:db8::5]:5985/wsman" in jobs[0].cmd
+
+
+def test_rsync_jobs_ipv6_brackets_url(config, port):
+    p = port(portid="873", name="rsync")
+    jobs = RsyncModule().jobs(HOST6, p, config)
+    assert jobs[0].cmd[-1] == "rsync://[2001:db8::5]:873/"
+
+
+def test_ssl_tls_jobs_ipv6_brackets_target(config, port):
+    p = port(portid="443", ssl=True)
+    jobs = SslTlsModule().jobs(HOST6, p, config)
+    assert "[2001:db8::5]:443" in jobs[0].cmd
+
+
+def test_rdp_jobs_ipv6_brackets_target(config, port):
+    p = port(portid="3389", name="ms-wbt-server")
+    jobs = RdpModule().jobs(HOST6, p, config)
+    assert jobs[0].cmd[-1] == "[2001:db8::5]:3389"
+
+
+def test_mssql_jobs_ipv6_brackets_creds(config, port):
+    p = port(portid="1433", name="mssql")
+    jobs = MssqlModule().jobs(HOST6, p, config)
+    assert "''@[2001:db8::5]" in jobs[0].cmd
+
+
+def test_dns_jobs_ipv6_skips_reverse_sweep(monkeypatch, config, port):
+    monkeypatch.setattr("modules.dns._resolve_domain", lambda h, tcp: "example.com")
+    p = port(portid="53", protocol="udp", name="domain")
+    jobs = DnsModule().jobs(HOST6, p, config)
+    # Only the forward job fires — no /24 reverse sweep for IPv6.
+    assert len(jobs) == 1
+    assert all("-r" not in j.cmd for j in jobs)
+
+
+def test_ssh_jobs_ipv6_sanitizes_filename(config, port):
+    p = port(portid="22", name="ssh")
+    jobs = SshModule().jobs(HOST6, p, config)
+    assert jobs[0].output_file == "2001_db8__5-22.misc.ssh_audit"
+    assert ":" not in jobs[0].output_file

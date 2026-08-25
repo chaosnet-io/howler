@@ -14,6 +14,7 @@ duplicates — on resume, if any one completed, all skip together.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -35,14 +36,14 @@ class LdapModule(BaseModule):
         return [
             Job(
                 cmd=[tool, "-d", "", "--dc-ip", host, "-U"],
-                output_file=f"{host}.misc.ldap_users",
+                output_file=f"{netutil.safe_filename(host)}.misc.ldap_users",
                 category="misc",
                 host=host,
                 description=f"windapsearch users {host}",
             ),
             Job(
                 cmd=[tool, "-d", "", "--dc-ip", host, "-G"],
-                output_file=f"{host}.misc.ldap_groups",
+                output_file=f"{netutil.safe_filename(host)}.misc.ldap_groups",
                 category="misc",
                 host=host,
                 description=f"windapsearch groups {host}",

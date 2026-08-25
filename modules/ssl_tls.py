@@ -5,6 +5,7 @@ Replaces: sslscan + MSF openssl_ccs (CCS injection now covered by testssl.sh).
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -25,10 +26,10 @@ class SslTlsModule(BaseModule):
                 tool,
                 "--color", "0",   # testssl has no --no-color; 0 = no mark-up
                 "--quiet",
-                "--logfile", f"{host}-{port.portid}.misc.ssl",
-                f"{host}:{port.portid}",
+                "--logfile", f"{netutil.safe_filename(host)}-{port.portid}.misc.ssl",
+                netutil.hostport(host, port.portid),
             ],
-            output_file=f"{host}-{port.portid}.misc.ssl",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.ssl",
             category="misc",
             host=host,
             description=f"testssl.sh {host}:{port.portid}",

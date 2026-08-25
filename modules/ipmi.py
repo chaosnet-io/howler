@@ -13,6 +13,7 @@ wafw00f / gowitness fire there automatically since nmap reports it as http.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -35,7 +36,7 @@ class IpmiModule(BaseModule):
                 "-H", host,
                 "lan", "print",
             ],
-            output_file=f"{host}-{port.portid}.misc.ipmi",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.ipmi",
             category="misc",
             host=host,
             description=f"ipmitool lan print {host}:{port.portid}",

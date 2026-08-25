@@ -5,6 +5,7 @@ Replaces: MSF auxiliary/scanner/smtp/smtp_enum (avoids msfconsole startup overhe
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -28,7 +29,7 @@ class SmtpModule(BaseModule):
                 "-t", host,
                 "-p", port.portid,
             ],
-            output_file=f"{host}-{port.portid}.misc.smtp",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.smtp",
             category="misc",
             host=host,
             description=f"smtp-user-enum {host}:{port.portid}",

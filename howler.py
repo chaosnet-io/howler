@@ -42,6 +42,7 @@ try:
     from rich.console import Console
     from rich.logging import RichHandler
 
+    import netutil
     from config import Config, load_config
     from models import HostScan, Job
     from modules import ModuleRegistry, build_default_registry
@@ -193,11 +194,25 @@ def import_hosts(
 
 
 def expand_cidrs(hosts: dict[str, HostScan]) -> None:
-    """Expand CIDR entries into individual host entries in-place."""
+    """Expand CIDR entries into individual host entries in-place.
+
+    IPv4 expands as before. IPv6 is bounded: only prefixes of
+    ``/netutil.MAX_IPV6_EXPAND_PREFIX`` or longer (≤256 hosts) expand — anything
+    larger is refused with an actionable error rather than iterating 2**64 hosts.
+    """
     cidrs = [addr for addr in hosts if "/" in addr]
     for cidr in cidrs:
-        del hosts[cidr]
         net = ipaddress.ip_network(cidr, strict=False)
+        if net.version == 6 and net.prefixlen < netutil.MAX_IPV6_EXPAND_PREFIX:
+            console.print(
+                f"[bold red]Refusing to expand IPv6 {cidr}: it spans "
+                f"{net.num_addresses} hosts, exceeding the "
+                f"/{netutil.MAX_IPV6_EXPAND_PREFIX} (256-host) safety bound. "
+                f"Provide specific addresses or a "
+                f"/{netutil.MAX_IPV6_EXPAND_PREFIX} or longer prefix.[/bold red]"
+            )
+            sys.exit(1)
+        del hosts[cidr]
         for ip in net.hosts():
             addr = str(ip)
             if addr not in hosts:
@@ -358,12 +373,30 @@ async def run_pipeline(args: argparse.Namespace, config: Config) -> None:
                     "discovery is usually faster for large ranges[/yellow]"
                 )
         else:
-            live_ips = await run_discovery(
-                targets=list(hosts.keys()),
-                iface=args.iface,
-                config=config,
-                console=console,
-            )
+            # Address-family-aware discovery. masscan is IPv4-only (its IPv6
+            # support is experimental), so IPv6 targets bypass discovery and are
+            # enumerated directly by nmap -6 -Pn.
+            ipv4_targets, ipv6_targets = netutil.split_by_family(list(hosts.keys()))
+
+            live_ips: list[str] = []
+
+            if ipv4_targets:
+                live_ips += await run_discovery(
+                    targets=ipv4_targets,
+                    iface=args.iface,
+                    config=config,
+                    console=console,
+                )
+
+            if ipv6_targets:
+                console.print(
+                    "[bold cyan]IPv6 targets present: masscan is IPv4-only — "
+                    "enumerating every IPv6 address directly via nmap -6 -Pn "
+                    "(implied --assume-up)[/bold cyan]"
+                )
+                ipv6_hosts = {addr: HostScan(address=addr) for addr in ipv6_targets}
+                expand_cidrs(ipv6_hosts)
+                live_ips += list(ipv6_hosts.keys())
 
             if not live_ips:
                 console.print("[bold red]No live hosts discovered. Exiting.[/bold red]")

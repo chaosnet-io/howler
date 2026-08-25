@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -25,13 +26,13 @@ class HttpModule(BaseModule):
     def jobs(self, host: str, port: PortInfo, config: Config) -> list[Job]:
         jobs: list[Job] = []
         scheme = port.scheme
-        base = f"{scheme}://{host}:{port.portid}"
+        base = f"{scheme}://{netutil.bracket(host)}:{port.portid}"
 
         # Always-on: whatweb, wafw00f, gowitness screenshot
         if config.tool("whatweb"):
             jobs.append(Job(
                 cmd=["whatweb", "-vv", base],
-                output_file=f"{host}-{port.portid}.{scheme}.whatweb",
+                output_file=f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.whatweb",
                 category="http",
                 host=host,
                 description=f"whatweb {base}",
@@ -40,7 +41,7 @@ class HttpModule(BaseModule):
         if config.tool("wafw00f"):
             jobs.append(Job(
                 cmd=["wafw00f", "-v", base],
-                output_file=f"{host}-{port.portid}.{scheme}.waf",
+                output_file=f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.waf",
                 category="http",
                 host=host,
                 description=f"wafw00f {base}",
@@ -83,14 +84,14 @@ class HttpModule(BaseModule):
                             "ffuf",
                             "-w", str(wordlist),
                             "-u", f"{base}/FUZZ",
-                            "-o", f"{host}-{port.portid}.{scheme}.ffuf",
+                            "-o", f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.ffuf",
                             "-of", "json",
                             "-fc", "302,400,401,403,404",
                             "-r",
                             "-recursion", "-recursion-depth", "2",
                             "-s",
                         ],
-                        output_file=f"{host}-{port.portid}.{scheme}.ffuf",
+                        output_file=f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.ffuf",
                         category="http",
                         host=host,
                         description=f"ffuf {base}",
@@ -112,9 +113,9 @@ class HttpModule(BaseModule):
                         "-timeout", "5",
                         "-evasion", "1",
                         *ssl_flag,
-                        "-h", f"{host}:{port.portid}",
+                        "-h", netutil.hostport(host, port.portid),
                     ],
-                    output_file=f"{host}-{port.portid}.{scheme}.nikto",
+                    output_file=f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.nikto",
                     category="http",
                     host=host,
                     description=f"nikto {base}",
@@ -131,7 +132,7 @@ class HttpModule(BaseModule):
                         "--batch",
                         "--no-color",
                     ],
-                    output_file=f"{host}-{port.portid}.{scheme}.wpscan",
+                    output_file=f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.wpscan",
                     category="http",
                     host=host,
                     description=f"wpscan {base}",
@@ -139,7 +140,7 @@ class HttpModule(BaseModule):
             elif "joomla" in cms and config.tool("joomscan"):
                 jobs.append(Job(
                     cmd=["joomscan", "-u", base],
-                    output_file=f"{host}-{port.portid}.{scheme}.joomscan",
+                    output_file=f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.joomscan",
                     category="http",
                     host=host,
                     description=f"joomscan {base}",
@@ -161,7 +162,7 @@ class HttpModule(BaseModule):
                             "http-get",
                             f"{base}/manager/html",
                         ],
-                        output_file=f"{host}-{port.portid}.{scheme}.tomcat_brute",
+                        output_file=f"{netutil.safe_filename(host)}-{port.portid}.{scheme}.tomcat_brute",
                         category="brute",
                         host=host,
                         description=f"hydra tomcat {base}/manager/html",

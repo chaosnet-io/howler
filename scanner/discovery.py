@@ -8,7 +8,9 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
+import os
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -16,6 +18,7 @@ from typing import Optional
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+import netutil
 from config import Config
 
 log = logging.getLogger(__name__)
@@ -41,7 +44,8 @@ async def run_discovery(
 
     log.info(f"Starting masscan against {host_count} addresses, estimated {est_duration:.1f}s")
 
-    cmd = _build_masscan_cmd(masscan_bin, targets, iface, config)
+    exclude_file = _masscan_exclude_file(config.exclude_file)
+    cmd = _build_masscan_cmd(masscan_bin, targets, iface, config, exclude_file=exclude_file)
     log.info(f"Executing: {' '.join(cmd)}")
 
     proc = await asyncio.create_subprocess_exec(
@@ -85,6 +89,10 @@ async def run_discovery(
     live = _parse_live_hosts(Path("live_hosts.txt"))
     Path("live_hosts.txt").unlink(missing_ok=True)
 
+    # Remove the filtered IPv4-only exclude file if one was generated.
+    if exclude_file and exclude_file != config.exclude_file:
+        Path(exclude_file).unlink(missing_ok=True)
+
     console.print(f"\t[bold][ Discovered {len(live)} host(s) ][/bold]\n")
     log.info(f"{len(live)} hosts found: {live}")
     return live
@@ -99,6 +107,7 @@ def _build_masscan_cmd(
     targets: list[str],
     iface: Optional[str],
     config: Config,
+    exclude_file: Optional[str] = None,
 ) -> list[str]:
     cmd = [
         masscan_bin,
@@ -112,11 +121,53 @@ def _build_masscan_cmd(
         "--banners",
         "-oB", "masscan.bin",
     ]
-    if config.exclude_file:
-        cmd.extend(["--excludefile", config.exclude_file])
+    effective_exclude = exclude_file or config.exclude_file
+    if effective_exclude:
+        cmd.extend(["--excludefile", effective_exclude])
     if iface:
         cmd.extend(["-e", iface])
     return cmd
+
+
+def _masscan_exclude_file(path: Optional[str]) -> Optional[str]:
+    """Return an IPv4-only exclude path suitable for masscan.
+
+    masscan only ever receives IPv4 targets, but a user's ``--exclude-file`` may
+    mix IPv4 and IPv6 CIDRs, which masscan would misparse. When the file contains
+    any IPv6 line, write a filtered IPv4-only copy and return its path; otherwise
+    return the original path unchanged. The caller is responsible for removing the
+    generated copy after the scan.
+    """
+    if not path:
+        return None
+    src = Path(path)
+    try:
+        lines = src.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return path
+
+    keep: list[str] = []
+    needs_filter = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            keep.append(line)
+            continue
+        try:
+            if netutil.is_ipv6(stripped):
+                needs_filter = True
+                continue
+        except ValueError:
+            pass  # keep lines we cannot classify (hostnames, malformed)
+        keep.append(line)
+
+    if not needs_filter:
+        return path
+
+    fd, tmp_name = tempfile.mkstemp(suffix=".txt", prefix="masscan-exclude-")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(keep) + "\n")
+    return tmp_name
 
 
 def _convert_masscan_output() -> None:
@@ -155,10 +206,7 @@ def _count_hosts(targets: list[str]) -> int:
     count = 0
     for t in targets:
         try:
-            if "/" in t:
-                count += 2 ** (32 - int(t.split("/")[1]))
-            else:
-                count += 1
-        except (ValueError, IndexError):
+            count += ipaddress.ip_network(t, strict=False).num_addresses
+        except ValueError:
             count += 1
     return count

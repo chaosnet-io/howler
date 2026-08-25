@@ -56,7 +56,7 @@ def _parse_single_xml(path: Path, known_hosts: set[str]) -> dict[str, HostScan]:
     try:
         root = etree.parse(path).getroot()
         for host_elem in root.iter(tag="host"):
-            addr = _extract_ipv4(host_elem)
+            addr = _extract_address(host_elem)
             if not addr or (known_hosts and addr not in known_hosts):
                 continue
 
@@ -74,11 +74,21 @@ def _parse_single_xml(path: Path, known_hosts: set[str]) -> dict[str, HostScan]:
     return scans
 
 
-def _extract_ipv4(host_elem) -> str | None:
+def _extract_address(host_elem) -> str | None:
+    """Return the host's IP address, preferring an ipv4/ipv6 address element.
+
+    Falls back to the first ``<address>`` element (e.g. ``addrtype="mac"``) so
+    hosts are never silently dropped when the expected type is absent.
+    """
+    fallback = None
     for address in host_elem.iter(tag="address"):
-        if address.attrib.get("addrtype") == "ipv4":
-            return address.attrib.get("addr")
-    return None
+        addrtype = address.attrib.get("addrtype")
+        addr = address.attrib.get("addr")
+        if addrtype in ("ipv4", "ipv6") and addr:
+            return addr
+        if fallback is None and addr:
+            fallback = addr
+    return fallback
 
 
 def _extract_port(port_elem) -> PortInfo | None:

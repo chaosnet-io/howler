@@ -109,6 +109,27 @@ without `-x`.
 
 ---
 
+### IPv6 targets
+
+Howler detects IPv4 vs IPv6 from the target strings themselves (single addresses
+or CIDRs, in either `-f` or a single argument) and splits a mixed list by family:
+
+- **IPv4** — unchanged: masscan discovery, then nmap enumeration.
+- **IPv6** — masscan is IPv4-only (its IPv6 support is experimental), so IPv6
+  targets bypass discovery and are enumerated directly via `nmap -6 -Pn`
+  (implicit `--assume-up`).
+- **IPv6 CIDRs** expand only for `/120` or longer (≤256 hosts); a larger prefix is
+  refused rather than iterating 2⁶⁴ addresses — provide specific addresses or a
+  small prefix.
+- **Mixed lists** (IPv4 + IPv6 together) are split by family and re-joined into a
+  single run and report. `--exclude-file` is handled per family too.
+- Output filenames for IPv6 hosts replace `:` with `_`.
+
+Link-local IPv6 with a scope (`fe80::1%eth0`) is not supported — target global
+unicast addresses.
+
+---
+
 ## Requirements
 
 ### Python

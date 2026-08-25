@@ -1,0 +1,76 @@
+# Howler Almanac — topic vocabulary
+#
+# Topics are the concept graph for the wiki. Every slug used in a page's
+# `topics:` frontmatter should be defined here.
+#
+#   slug:        stable identifier used in page frontmatter (kebab-case)
+#   title:       display name
+#   description: one sentence
+#   parents:     parent topic slugs (establishes "is a kind of / part of")
+
+topics:
+  - slug: overview
+    title: Overview
+    description: Entry points and reading paths for the wiki
+    parents: []
+
+  - slug: architecture
+    title: Architecture
+    description: Runtime flows, subsystem boundaries, and ownership
+    parents: []
+
+  - slug: components
+    title: Components
+    description: Internals of independently understandable subsystems
+    parents: [architecture]
+
+  - slug: decisions
+    title: Decisions
+    description: Design choices and constraints future work must preserve
+    parents: []
+
+  - slug: guides
+    title: Guides
+    description: Task-oriented procedures for developers and operators
+    parents: []
+
+  - slug: reference
+    title: Reference
+    description: Exact commands, settings, event schemas, and formats
+    parents: []
+
+  # --- Domain topics ---
+  - slug: pipeline
+    title: Scan Pipeline
+    description: The end-to-end target-to-report flow orchestrated by howler.py
+    parents: [architecture]
+
+  - slug: discovery
+    title: Host Discovery
+    description: masscan-based live-host detection that gates nmap enumeration
+    parents: [architecture]
+
+  - slug: enumeration
+    title: Port Enumeration
+    description: nmap TCP/UDP scanning and XML import into HostScan/PortInfo
+    parents: [architecture]
+
+  - slug: module-system
+    title: Module System
+    description: Registry of per-protocol scanner plugins dispatched by port match
+    parents: [components]
+
+  - slug: output-format
+    title: Output Formats
+    description: On-disk file naming, directory layout, and run_state.jsonl schema
+    parents: [reference]
+
+  - slug: resume
+    title: Resume
+    description: Incremental run_state.jsonl state used to skip completed jobs
+    parents: [reference]
+
+  - slug: addressing
+    title: Addressing
+    description: IPv4/IPv6 target handling assumptions across the pipeline
+    parents: [architecture]

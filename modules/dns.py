@@ -6,6 +6,7 @@ Domain derivation uses Python subprocess instead of the original shell pipeline.
 from __future__ import annotations
 
 import logging
+import netutil
 import subprocess
 from typing import Optional
 
@@ -35,17 +36,19 @@ class DnsModule(BaseModule):
         # after the tcp variant succeeded.
         key = f"{port.portid}/{port.protocol}"
 
-        # Reverse DNS sweep of /24
-        rdns_cmd = [tool, "-n", host, "-r", f"{host}/24"]
-        if tcp:
-            rdns_cmd.append("--tcp")
-        jobs.append(Job(
-            cmd=rdns_cmd,
-            output_file=f"{host}.misc.rdns",
-            category="misc",
-            host=host,
-            description=f"dnsrecon reverse {host}/24 ({key})",
-        ))
+        # Reverse DNS sweep of /24. IPv4-only: an IPv6 reverse zone uses nibble
+        # (ip6.arpa) format and sweeping a /64 is infeasible, so skip it.
+        if not netutil.is_ipv6(host):
+            rdns_cmd = [tool, "-n", host, "-r", f"{host}/24"]
+            if tcp:
+                rdns_cmd.append("--tcp")
+            jobs.append(Job(
+                cmd=rdns_cmd,
+                output_file=f"{netutil.safe_filename(host)}.misc.rdns",
+                category="misc",
+                host=host,
+                description=f"dnsrecon reverse {host}/24 ({key})",
+            ))
 
         # Forward DNS — resolve domain via PTR then run zone transfer attempt
         domain = _resolve_domain(host, tcp)
@@ -55,7 +58,7 @@ class DnsModule(BaseModule):
                 fwd_cmd.append("--tcp")
             jobs.append(Job(
                 cmd=fwd_cmd,
-                output_file=f"{host}.misc.dns",
+                output_file=f"{netutil.safe_filename(host)}.misc.dns",
                 category="misc",
                 host=host,
                 description=f"dnsrecon forward {host} ({domain}) ({key})",

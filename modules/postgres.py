@@ -13,6 +13,7 @@ psql's default connect timeout plus the job-level timeout.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -38,7 +39,7 @@ class PostgresModule(BaseModule):
                 "-t",           # tuples only (clean output)
                 "-c", "SELECT version();",
             ],
-            output_file=f"{host}-{port.portid}.misc.postgres",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.postgres",
             category="misc",
             host=host,
             description=f"psql version probe {host}:{port.portid}",

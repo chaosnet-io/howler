@@ -9,6 +9,7 @@ critical finding.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -29,9 +30,9 @@ class RsyncModule(BaseModule):
                 tool,
                 "--contimeout=10",
                 "--list-only",
-                f"rsync://{host}:{port.portid}/",
+                f"rsync://{netutil.bracket(host)}:{port.portid}/",
             ],
-            output_file=f"{host}-{port.portid}.misc.rsync",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.rsync",
             category="misc",
             host=host,
             description=f"rsync --list-only {host}:{port.portid}",

@@ -8,6 +8,7 @@ import logging
 import subprocess
 from typing import Optional
 
+import netutil
 from config import Config
 from models import Job
 
@@ -23,6 +24,7 @@ def tcp_scan_job(host: str, iface: Optional[str], full_port: bool, config: Confi
     cmd = [
         nmap_bin,
         "-v0", "-n", "-Pn", "-sSV",
+        *(["-6"] if netutil.is_ipv6(host) else []),
         *(["-O"] if config.os_detect else []),
         *(
             ["-p", config.nmap_tcp_ports] if config.nmap_tcp_ports
@@ -37,13 +39,13 @@ def tcp_scan_job(host: str, iface: Optional[str], full_port: bool, config: Confi
         "--host-timeout", f"{config.task_timeout // 60}m",
         *(["--excludefile", config.exclude_file] if config.exclude_file else []),
         "--open",
-        "-oA", f"{host}.tcp",
+        "-oA", f"{netutil.safe_filename(host)}.tcp",
         *([ "-e", iface] if iface else []),
         host,
     ]
     return Job(
         cmd=cmd,
-        output_file=f"{host}.tcp.xml",
+        output_file=f"{netutil.safe_filename(host)}.tcp.xml",
         category="xml",
         host=host,
         timeout=config.task_timeout,
@@ -58,6 +60,7 @@ def udp_scan_job(host: str, iface: Optional[str], config: Config) -> Job:
     cmd = [
         nmap_bin,
         "-v0", "-n", "-Pn", "-sUV",
+        *(["-6"] if netutil.is_ipv6(host) else []),
         *(["-O"] if config.os_detect else []),
         "-p", config.nmap_udp_ports,
         "--script", config.nmap_nse_udp,
@@ -68,13 +71,13 @@ def udp_scan_job(host: str, iface: Optional[str], config: Config) -> Job:
         "--host-timeout", f"{config.task_timeout // 60}m",
         *(["--excludefile", config.exclude_file] if config.exclude_file else []),
         "--open",
-        "-oA", f"{host}.udp",
+        "-oA", f"{netutil.safe_filename(host)}.udp",
         *([ "-e", iface] if iface else []),
         host,
     ]
     return Job(
         cmd=cmd,
-        output_file=f"{host}.udp.xml",
+        output_file=f"{netutil.safe_filename(host)}.udp.xml",
         category="xml",
         host=host,
         timeout=config.task_timeout,

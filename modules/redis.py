@@ -13,6 +13,7 @@ confirm the service is there, but the real finding is the unauth case.
 
 from __future__ import annotations
 
+import netutil
 from config import Config
 from models import Job, PortInfo
 from modules import BaseModule
@@ -36,7 +37,7 @@ class RedisModule(BaseModule):
                 "--connect-timeout", "10",
                 "INFO",
             ],
-            output_file=f"{host}-{port.portid}.misc.redis",
+            output_file=f"{netutil.safe_filename(host)}-{port.portid}.misc.redis",
             category="misc",
             host=host,
             description=f"redis-cli INFO {host}:{port.portid}",

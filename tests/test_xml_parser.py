@@ -131,6 +131,34 @@ def test_parse_service_fields_populated(xml_dir):
     assert ssh.protocol == "tcp"
 
 
+def test_parse_ipv6_host_extracted_and_ports_populated(xml_dir):
+    """An nmap XML host with addrtype="ipv6" must not be dropped."""
+    xml = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -6">
+  <host>
+    <address addrtype="ipv6" addr="2001:db8::5"/>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open"/>
+        <service name="ssh" product="OpenSSH" version="9.0"/>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="open"/>
+        <service name="http" product="nginx"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>
+"""
+    (xml_dir / "host.tcp.xml").write_text(xml)
+    scans = parse_xml_files(xml_dir, known_hosts={"2001:db8::5"})
+    assert "2001:db8::5" in scans
+    ports = scans["2001:db8::5"].ports
+    assert set(ports.keys()) == {"22/tcp", "80/tcp"}
+    assert ports["22/tcp"].product == "openssh"
+
+
 # ── SSL detection ───────────────────────────────────────────────────────────
 
 def test_parse_ssl_from_tunnel_attribute(xml_dir):
